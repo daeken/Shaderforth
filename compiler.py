@@ -228,6 +228,7 @@ class Compiler(object):
 		self.rstack = Stack()
 		self.sstack = Stack()
 		self.locals = {}
+		self.macrolocals = {}
 		self.effects = []
 		self.argcount = 0
 
@@ -240,6 +241,8 @@ class Compiler(object):
 				bwords[token][1](self, *(self.atoms.consume() for i in xrange(bwords[token][0])))
 			elif len(token) > 1 and token[0] == '@':
 				self.rstack.push(Type(token[1:]))
+			elif len(token) > 2 and token[:2] == '=>':
+				self.macroassign(token[2:])
 			elif len(token) > 1 and token[0] == '=':
 				self.assign(token[1:])
 			elif len(token) > 1 and token[0] == '.':
@@ -263,6 +266,8 @@ class Compiler(object):
 				self.rstack.push(('var', token))
 			elif token in self.words:
 				self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1]))
+			elif token in self.macrolocals:
+				self.rstack.push(self.macrolocals[token])
 			elif token == '[':
 				self.sstack.push(self.rstack)
 				self.rstack = Stack()
@@ -292,6 +297,9 @@ class Compiler(object):
 			if name not in self.locals and name not in self.globals:
 				self.locals[name] = Type(self.infertype(elem))
 			self.effects.append(('=', ('var', name), elem))
+
+	def macroassign(self, name):
+		self.macrolocals[name] = self.rstack.pop()
 
 	def infertype(self, expr):
 		if isinstance(expr, tuple):
@@ -365,6 +373,13 @@ class Compiler(object):
 	def negate(self):
 		self.rstack.push(('-', self.rstack.pop()))
 
+	@word('(')
+	def nullparen_open(self):
+		pass
+	@word(')')
+	def nullparen_open(self):
+		pass
+
 code = '''
 :globals
 	@vec3 uniform =iResolution
@@ -376,8 +391,9 @@ p length iGlobalTime + sin =d
 p .y.x / atan iGlobalTime + d iGlobalTime + sin + 3.1416 3. / mod 3. * sin =a
 a d + =v
 p length 4. * a iGlobalTime + - sin =m
+a negate =>-a
 v negate m d negate sin * iGlobalTime .1 * + sin *
-v m * a negate sin tan a negate 3. * sin * 3. * iGlobalTime .5 * + sin *
+( ( v m * ) ( -a sin tan -a 3. * sin ) * ) 3. * iGlobalTime .5 * + sin *
 v m mod
 iGlobalTime
 vec4 =gl_FragColor
@@ -392,8 +408,8 @@ code = '''
 :m ddot dup dot ;
 : sine-times ( float -> float ) iGlobalTime sin abs + ;
 
-[ 0.0 0.5 1.0 ] /sine-times \+ 3.0 / 
-dup dup 1.0 vec4 =gl_FragColor
+[ 0.0 0.5 1.0 ] /sine-times \+ 3.0 / =>temp
+temp temp temp 1.0 vec4 =gl_FragColor
 '''
 
 Compiler(code)
