@@ -26,7 +26,7 @@
 
 	[
 		time 2.7 * cos abs wing +
-		time 3.3 * sin 1.0 r - * abs
+		time 3.3 * sin 1.0 r - * wing * abs
 		time 1.7 * sin r * abs
 		1.0
 	]v

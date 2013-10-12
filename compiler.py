@@ -398,7 +398,7 @@ class Compiler(object):
 
 		if not isinstance(top, tuple):
 			inline = True
-		elif top[0] == 'var':
+		elif top[0] == 'var' or top[0] == 'arg':
 			inline = True
 		elif top[0][0] == '.' and top[1][0] == 'var':
 			inline = True
