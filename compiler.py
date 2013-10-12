@@ -436,6 +436,11 @@ class Compiler(object):
 		for elem in self.rstack.pop():
 			self.rstack.push(elem)
 
+	@word('avec')
+	def avec(self):
+		tlist = self.rstack.pop()
+		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
+
 code = '''
 :globals
 	@vec3 uniform =iResolution
@@ -481,8 +486,7 @@ code = '''
 
 code = '''
 :m add-five 5 + ;
-:m add + ;
-[ 0 1 2 3 ] /add-five \\add dup dup dup vec4
+[ 0 1 2 3 ] /add-five avec
 '''
 
 Compiler(code)

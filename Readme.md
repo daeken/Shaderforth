@@ -72,6 +72,7 @@ Words
 - `/word` -- For each element of the array at the top of the stack, map against `word` -- this can take a macro word
 - `\word` -- Performs a reduce operation with `word` against the array at the top of the stack -- this can take a macro word
 - `flatten` -- Given an array at the top of the stack, this will turn the elements into native stack elements
+- `avec` -- Takes an array from the top of the stack and generates a vector of the requisite size
 - `dup` -- Duplicates the element at the top of the stack
 - `swap` -- Swaps the top two elements of the stack
 - Binary math operators -- They're used as expected
