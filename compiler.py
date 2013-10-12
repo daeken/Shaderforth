@@ -9,9 +9,9 @@ def regex(pattern, flags=0):
 	pattern = re.compile(pattern, flags)
 	return sub
 
-ffloat = regex(r'([0-9]+\.[0-9]*)')
-efloat = regex(r'(\.[0-9]+)')
-bint = regex(r'([0-9]+)')
+ffloat = regex(r'(-?[0-9]+\.[0-9]*)')
+efloat = regex(r'(-?\.[0-9]+)')
+bint = regex(r'(-?[0-9]+)')
 
 satis = lambda inp, *funcs: any(func(inp) for func in funcs)
 
@@ -285,6 +285,11 @@ class Compiler(object):
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
 				self.rstack.push(temp)
+			elif token == ']v':
+				temp = self.rstack.list
+				self.rstack = self.sstack.pop()
+				self.rstack.push(temp)
+				self.avec()
 			else:
 				print 'unknown token', token
 
@@ -441,52 +446,9 @@ class Compiler(object):
 		tlist = self.rstack.pop()
 		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
 
-code = '''
-:globals
-	@vec3 uniform =iResolution
-	@float uniform =iGlobalTime
-;
+def main(fn):
+	Compiler(file(fn, 'r').read().decode('utf-8'))
 
-gl_FragCoord .xyz iResolution / 0.5 - iGlobalTime 10.0 / sin abs * 50.0 * =p
-p length iGlobalTime + sin =d
-p .y.x / atan iGlobalTime + d iGlobalTime + sin + 3.1416 3. / mod 3. * sin =a
-a d + =v
-p length 4. * a iGlobalTime + - sin =m
-a negate =>-a
-v negate m d negate sin * iGlobalTime .1 * + sin *
-v m * -a sin tan -a 3. * sin * 3. * iGlobalTime .5 * + sin *
-v m mod
-iGlobalTime
-vec4 =gl_FragColor
-'''
-
-code = '''
-:globals
-	@vec3 uniform =iResolution
-	@float uniform =iGlobalTime
-;
-
-:m ddot dup dot ;
-: sine-times ( float -> float ) iGlobalTime sin abs + ;
-
-[ 0.0 0.5 1.0 ] /sine-times \+ 3.0 / =>temp
-temp temp temp 1.0 vec4 =gl_FragColor
-'''
-
-code = '''
-	:globals
-		@vec3 uniform =iResolution
-		@float uniform =iGlobalTime
-	;
-
-	gl_FragCoord .xy iResolution .xy / 0.5 - 2.0 * length =distance
-	distance iGlobalTime cos * sin abs =>color
-	color color color 1.0 vec4 =gl_FragColor
-'''
-
-code = '''
-:m add-five 5 + ;
-[ 0 1 2 3 ] /add-five avec
-'''
-
-Compiler(code)
+if __name__=='__main__':
+	import sys
+	main(*sys.argv[1:])

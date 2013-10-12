@@ -69,6 +69,7 @@ Words
 - `:m name atom atom atom ;` -- Defines a macro word whose contents will be inlined upon use
 - `( )` -- Everything between parentheses (make sure you include spaces around them -- these are both words) will be ignored as a comment, with the exception of type specifiers on words
 - `[ atom atom atom ]` -- Defines an array
+- `[ atom atom atom ]v` -- Defines a vector.  Equivalent to the same array followed by `avec`
 - `/word` -- For each element of the array at the top of the stack, map against `word` -- this can take a macro word
 - `\word` -- Performs a reduce operation with `word` against the array at the top of the stack -- this can take a macro word
 - `flatten` -- Given an array at the top of the stack, this will turn the elements into native stack elements
