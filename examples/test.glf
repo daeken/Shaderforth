@@ -4,14 +4,30 @@
 	@vec2 =pos
 ;
 
+: rot ( vec2 float -> vec2 )
+	:m _ c * swap s * ;
+	=>vec
+	dup sin =>s cos =>c
+	[
+		vec .y.x _ -
+		vec .x.y _ +
+	]v
+;
+
+:m angle .y.x / atan ;
+
 : frame ( float -> vec4 )
 	iGlobalTime + =>time
-	pos length =>plen
+	pos length =>r
+
+	pos time r + rot angle =>ta
+	ta 3.1416 4.0 / mod
+	 =>wing
 
 	[
-		time 2.7 * cos abs
-		time 3.3 * sin 1.0 plen - * abs
-		time 1.7 * sin plen * abs
+		time 2.7 * cos abs wing +
+		time 3.3 * sin 1.0 r - * abs
+		time 1.7 * sin r * abs
 		1.0
 	]v
 ;
