@@ -83,6 +83,10 @@ class Code(object):
 		self.i += 1
 		return self.elems[self.i - 1]
 
+	def insert(self, atoms):
+		self.elems = self.elems[:self.i] + list(atoms) + self.elems[self.i:]
+		return self
+
 	def __repr__(self):
 		return 'Code(parsed=%r, rest=%r)' % (self.elems[:self.i], self.elems[self.i:])
 
@@ -113,7 +117,7 @@ class Compiler(object):
 			gl_FragCoord=Type('vec4'), 
 			gl_FragColor=Type('vec4'), 
 		)
-		self.words, self.wordtypes = self.parsewords(code)
+		self.words, self.wordtypes, self.macros = self.parsewords(code)
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
@@ -202,6 +206,16 @@ class Compiler(object):
 				cur = globals
 			elif token == ';':
 				cur = modstack.pop()
+			elif token == '(':
+				depth = 1
+				while parsed.peek() != None:
+					token = parsed.consume()
+					if token == '(':
+						depth += 1
+					elif token == ')':
+						depth -= 1
+						if depth == 0:
+							break
 			else:
 				cur.append(token)
 
@@ -221,7 +235,7 @@ class Compiler(object):
 		self.globals.update(locals)
 		assert len(effects) == 0
 
-		return words, wordtypes
+		return words, wordtypes, macros
 
 	def compile(self, name, atoms):
 		self.atoms = Code(atoms)
@@ -250,13 +264,9 @@ class Compiler(object):
 				for swizzle in token[1:].split('.'):
 					self.rstack.push(('.' + swizzle, elem))
 			elif len(token) > 1 and token[0] == '/':
-				self.rstack.push([(token[1:], elem) for elem in self.rstack.pop()])
+				self.map(token[1:])
 			elif len(token) > 1 and token[0] == '\\':
-				elems = self.rstack.pop()
-				expr, elems = elems[0], elems[1:]
-				for elem in elems:
-					expr = (token[1:], expr, elem)
-				self.rstack.push(expr)
+				self.reduce(token[1:])
 			elif token in glfuncs:
 				self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(glfuncs[token])][::-1]))
 			elif token in '-+/*':
@@ -297,6 +307,42 @@ class Compiler(object):
 			if name not in self.locals and name not in self.globals:
 				self.locals[name] = Type(self.infertype(elem))
 			self.effects.append(('=', ('var', name), elem))
+
+	def map(self, name):
+		tlist = self.rstack.pop()
+		if name not in self.macros:
+			self.rstack.push([(name, elem) for elem in tlist])
+			return
+
+		atoms = self.macros[name]
+		tatoms = []
+		tatoms.append(u'[')
+		for i, val in enumerate(tlist):
+			tname = u'__temp_%i' % i
+			self.macrolocals[tname] = val
+			tatoms.append(tname)
+			tatoms += atoms
+		tatoms.append(u']')
+		self.atoms.insert(tatoms)
+
+	def reduce(self, name):
+		elems = self.rstack.pop()
+		if name not in self.macros:
+			expr, elems = elems[0], elems[1:]
+			for elem in elems:
+				expr = (name, expr, elem)
+			self.rstack.push(expr)
+			return
+
+		atoms = self.macros[name]
+		tatoms = []
+		for i, val in enumerate(elems):
+			tname = u'__temp_%i' % i
+			self.macrolocals[tname] = val
+			tatoms.append(tname)
+			if i != 0:
+				tatoms += atoms
+		self.atoms.insert(tatoms)
 
 	def macroassign(self, name):
 		self.macrolocals[name] = self.rstack.pop()
@@ -375,10 +421,20 @@ class Compiler(object):
 
 	@word('(')
 	def nullparen_open(self):
-		pass
-	@word(')')
-	def nullparen_open(self):
-		pass
+		depth = 1
+		while self.atoms.peek() != None:
+			token = self.atoms.consume()
+			if token == ')':
+				depth -= 1
+				if depth == 0:
+					return
+			elif token == '(':
+				depth += 1
+
+	@word('flatten')
+	def flatten(self):
+		for elem in self.rstack.pop():
+			self.rstack.push(elem)
 
 code = '''
 :globals
@@ -393,7 +449,7 @@ a d + =v
 p length 4. * a iGlobalTime + - sin =m
 a negate =>-a
 v negate m d negate sin * iGlobalTime .1 * + sin *
-( ( v m * ) ( -a sin tan -a 3. * sin ) * ) 3. * iGlobalTime .5 * + sin *
+v m * -a sin tan -a 3. * sin * 3. * iGlobalTime .5 * + sin *
 v m mod
 iGlobalTime
 vec4 =gl_FragColor
@@ -410,6 +466,23 @@ code = '''
 
 [ 0.0 0.5 1.0 ] /sine-times \+ 3.0 / =>temp
 temp temp temp 1.0 vec4 =gl_FragColor
+'''
+
+code = '''
+	:globals
+		@vec3 uniform =iResolution
+		@float uniform =iGlobalTime
+	;
+
+	gl_FragCoord .xy iResolution .xy / 0.5 - 2.0 * length =distance
+	distance iGlobalTime cos * sin abs =>color
+	color color color 1.0 vec4 =gl_FragColor
+'''
+
+code = '''
+:m add-five 5 + ;
+:m add + ;
+[ 0 1 2 3 ] /add-five \\add dup dup dup vec4
 '''
 
 Compiler(code)
