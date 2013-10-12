@@ -111,7 +111,8 @@ gltypes = dict(
 	length='float'
 )
 class Compiler(object):
-	def __init__(self, code):
+	def __init__(self, code, shadertoy=False):
+		self.shadertoy = shadertoy
 		Compiler.instance = self
 		self.globals = dict(
 			gl_FragCoord=Type('vec4'), 
@@ -129,7 +130,7 @@ class Compiler(object):
 			return name.replace('-', '_')
 
 		for name, type in self.globals.items():
-			if name.startswith('gl_'):
+			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
 				continue
 
 			print type, rename(name) + ';'
@@ -157,6 +158,8 @@ class Compiler(object):
 					return '%r %s' % (locals[atom[1]], rename(atom[1]))
 			elif atom[0] == 'arg':
 				return atom[1]
+			elif atom[0] == 'return':
+				return 'return %s' % structure(atom[1])
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -446,8 +449,8 @@ class Compiler(object):
 		tlist = self.rstack.pop()
 		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
 
-def main(fn):
-	Compiler(file(fn, 'r').read().decode('utf-8'))
+def main(fn, shadertoy=None):
+	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
 
 if __name__=='__main__':
 	import sys
