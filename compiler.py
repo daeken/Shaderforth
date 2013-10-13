@@ -186,6 +186,10 @@ class Compiler(object):
 				return '} else {', True
 			elif atom[0] == 'endblock':
 				return '}', True
+			elif atom[0] == 'break':
+				return 'break'
+			elif atom[0] == 'continue':
+				return 'continue'
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -350,13 +354,23 @@ class Compiler(object):
 				for swizzle in token[1:].split('.'):
 					self.rstack.push(('.' + swizzle, elem))
 			elif len(token) > 1 and token[0] == '/':
-				self.map(token[1:])
+				if token == '/{':
+					self.map(self.block())
+				else:
+					self.map(token[1:])
 			elif len(token) > 1 and token[0] == '\\':
-				self.reduce(token[1:])
+				if token == '\\{':
+					self.reduce(self.block())
+				else:
+					self.reduce(token[1:])
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
-				self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1]))
+				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1])
+				if self.wordtypes[token][1] == 'void':
+					self.effects.append(elem)
+				else:
+					self.rstack.push(elem)
 			elif token in self.macrolocals:
 				self.rstack.push(self.macrolocals[token])
 			elif token == '[':
@@ -433,11 +447,8 @@ class Compiler(object):
 
 	def map(self, name):
 		tlist = self.rstack.pop()
-		if name not in self.macros:
-			self.rstack.push([(name, elem) for elem in tlist])
-			return
 
-		atoms = self.macros[name]
+		atoms = self.blockify(name)
 		tatoms = []
 		tatoms.append(u'[')
 		for i, val in enumerate(tlist):
@@ -450,14 +461,8 @@ class Compiler(object):
 
 	def reduce(self, name):
 		elems = self.rstack.pop()
-		if name not in self.macros:
-			expr, elems = elems[0], elems[1:]
-			for elem in elems:
-				expr = (name, expr, elem)
-			self.rstack.push(expr)
-			return
-
-		atoms = self.macros[name]
+		
+		atoms = self.blockify(name)
 		tatoms = []
 		for i, val in enumerate(elems):
 			tname = u'__temp_%i' % i
@@ -560,20 +565,25 @@ class Compiler(object):
 	def call(self):
 		name = self.rstack.pop()
 
-		if name in self.macros:
-			atoms = self.macros[name]
-			self.atoms.insert(atoms)
+		atoms = self.blockify(name)
+		self.atoms.insert(atoms)
+
+	def blockify(self, atom):
+		if isinstance(atom, list):
+			return atom
+
+		if atom in self.macros:
+			return self.macros[atom]
+		elif atom in self.words or atom in bwords:
+			return [atom]
 		else:
-			if name in bwords:
-				consumes, _ = bwords[name]
-			else:
-				consumes = len(self.wordtypes[name][0])
-			self.rstack.push(tuple([name] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
+			print atom
+			assert False
 
 	@word('times')
 	def times(self):
 		count = self.rstack.pop()
-		block = self.rstack.pop()
+		block = self.blockify(self.rstack.pop())
 		var = self.tempname()
 
 		self.effects.append(('for', var, 0, count))
@@ -585,7 +595,7 @@ class Compiler(object):
 	@word('when')
 	def when(self):
 		cond = self.rstack.pop()
-		block = self.rstack.pop()
+		block = self.blockify(self.rstack.pop())
 
 		self.effects.append(('if', cond))
 		self.rstack.push('__term__')
@@ -594,8 +604,8 @@ class Compiler(object):
 	@word('if')
 	def if_(self):
 		cond = self.rstack.pop()
-		else_ = self.rstack.pop()
-		if_ = self.rstack.pop()
+		else_ = self.blockify(self.rstack.pop())
+		if_ = self.blockify(self.rstack.pop())
 
 		self.effects.append(('if', cond))
 		self.rstack.push(else_)
@@ -616,6 +626,14 @@ class Compiler(object):
 		self.effects.append(('endblock', ))
 		while self.rstack.pop() != '__term__':
 			pass
+
+	@word('break')
+	def break_(self):
+		self.effects.append(('break', ))
+
+	@word('continue')
+	def continue_(self):
+		self.effects.append(('continue', ))
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
