@@ -66,7 +66,9 @@ Words
 - `=name` -- Assigns to a GLSL variable named `name`
 - `=>name` -- Creates a local macro variable, whose value will be embedded literally wherever it's used
 - `: name ( argtype argtype argtype -> returntype ) atom atom atom ;` -- Defines a word that will be created as a GLSL function
+	- This can optionally take argument names, `argname:argtype`, which will become macro locals.
 - `:m name atom atom atom ;` -- Defines a macro word whose contents will be inlined upon use
+	- This can optionally take argument names, which will become macro locals.  `:m name ( arg1 arg2 ) atom atom atom ;`
 - `( )` -- Everything between parentheses (make sure you include spaces around them -- these are both words) will be ignored as a comment, with the exception of type specifiers on words
 - `[ atom atom atom ]` -- Defines an array
 - `[ atom atom atom ]v` -- Defines a vector.  Equivalent to the same array followed by `avec`
@@ -78,3 +80,6 @@ Words
 - `swap` -- Swaps the top two elements of the stack
 - Binary math operators -- They're used as expected
 - Unary math operator `negate` -- Flips the sign on the topmost element
+- `&word` -- Pushes a word reference to the stack
+- `call` -- Executes a word reference
+- `*name` -- Equivalent to `name call`
