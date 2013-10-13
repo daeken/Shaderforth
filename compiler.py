@@ -29,12 +29,6 @@ def parse(code):
 
 	return code
 
-def word(symbol, consumes=0):
-	def dec(fn):
-		bwords[symbol] = consumes, fn
-		return fn
-	return dec
-
 class Type(object):
 	def __init__(self, name):
 		self.name = name
@@ -90,7 +84,18 @@ class Code(object):
 	def __repr__(self):
 		return 'Code(parsed=%r, rest=%r)' % (self.elems[:self.i], self.elems[self.i:])
 
-bwords = {}
+def word(symbol, consumes=0):
+	def dec(fn):
+		bwords[symbol] = consumes, fn
+		return fn
+	return dec
+
+bwords = {
+	'+' : (2, None), 
+	'-' : (2, None), 
+	'*' : (2, None), 
+	'/' : (2, None), 
+}
 glfuncs = dict(
 	dot=2, 
 	vec4=4, 
@@ -110,6 +115,8 @@ gltypes = dict(
 	vec4='vec4',
 	length='float'
 )
+for name, consumes in glfuncs.items():
+	bwords[name] = (consumes, None)
 class Compiler(object):
 	def __init__(self, code, shadertoy=False):
 		self.shadertoy = shadertoy
@@ -173,14 +180,29 @@ class Compiler(object):
 			print '}'
 
 	def parsewords(self, code):
+		def sanitize(name, macro):
+			spec = macrospec[name]
+			preamble = []
+			for elem in spec[::-1]:
+				preamble.append('=>__macro_' + name + '_' + elem)
+			for i, elem in enumerate(macro):
+				if elem in spec:
+					macro[i] = '__macro_' + name + '_' + elem
+				elif len(elem) > 1 and elem[0] == '*':
+					macro[i] = '*__macro_' + name + '_' + elem[1:]
+			macros[name] = preamble + macro
+
 		parsed = Code(parse(code))
 		parseloc = 0
 		words, macros = {'main': []}, {}
+		macrospec = {}
 		wordtypes = {'main' : ((), 'void')}
 		globals = []
 
 		modstack = []
 		cur = words['main']
+		in_macro = None
+		preamble = []
 
 		while parsed.peek() is not None:
 			token = parsed.consume()
@@ -195,22 +217,44 @@ class Compiler(object):
 				else:
 					assert argstart == '('
 					args = []
+					argnames = []
 					ret = 'void'
 					while parsed.peek() != ')':
 						token = parsed.consume()
 						if token == '->':
 							ret = parsed.consume()
 						else:
-							args.append(token)
+							token = token.split(':', 1)
+							if len(token) == 1:
+								args.append(token[0])
+								argnames.append(None)
+							else:
+								args.append(token[1])
+								argnames.append(token[0])
 					parsed.consume()
 					wordtypes[name] = tuple(args), ret
+					assert len([_ for _ in argnames if _ != None]) == 0 or None not in argnames
+					if None not in argnames:
+						for name in argnames[::-1]:
+							cur.append('=>' + name)
 			elif token == ':m':
 				modstack.append(cur)
-				cur = macros[parsed.consume()] = []
+				name = parsed.consume()
+				cur = macros[name] = []
+				macrospec[name] = []
+				in_macro = name
+				if parsed.peek() == '(':
+					parsed.consume()
+					while parsed.peek() != ')':
+						macrospec[name].append(parsed.consume().split(':')[0])
+					parsed.consume()
 			elif token == ':globals':
 				modstack.append(cur)
 				cur = globals
 			elif token == ';':
+				if in_macro:
+					sanitize(in_macro, cur)
+					in_macro = None
 				cur = modstack.pop()
 			elif token == '(':
 				depth = 1
@@ -250,7 +294,8 @@ class Compiler(object):
 		self.locals = {}
 		self.macrolocals = {}
 		self.effects = []
-		self.argcount = 0
+		if name != '__globals':
+			self.argcount = len(self.wordtypes[name][0])+1
 
 		while self.atoms.peek() != None:
 			token = self.atoms.consume()
@@ -258,9 +303,18 @@ class Compiler(object):
 			if not isinstance(token, unicode):
 				self.rstack.push(token)
 			elif token in bwords:
-				bwords[token][1](self, *(self.atoms.consume() for i in xrange(bwords[token][0])))
+				consumes, fn = bwords[token]
+				if fn != None:
+					fn(self, *[self.atoms.consume() for i in xrange(consumes)][::-1])
+				else:
+					self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
 			elif len(token) > 1 and token[0] == '@':
 				self.rstack.push(Type(token[1:]))
+			elif len(token) > 1 and token[0] == '&':
+				self.rstack.push(token[1:])
+			elif len(token) > 1 and token[0] == '*':
+				self.rstack.push(self.macrolocals[token[1:]])
+				self.call()
 			elif len(token) > 2 and token[:2] == '=>':
 				self.macroassign(token[2:])
 			elif len(token) > 1 and token[0] == '=':
@@ -273,11 +327,6 @@ class Compiler(object):
 				self.map(token[1:])
 			elif len(token) > 1 and token[0] == '\\':
 				self.reduce(token[1:])
-			elif token in glfuncs:
-				self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(glfuncs[token])][::-1]))
-			elif token in '-+/*':
-				b, a = self.rstack.pop(), self.rstack.pop()
-				self.rstack.push((token, a, b))
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -306,7 +355,9 @@ class Compiler(object):
 		return self.locals, self.effects
 
 	def argument(self):
-		self.argcount += 1
+		print self.atoms
+		assert self.argcount > 0
+		self.argcount -= 1
 		return ('arg', 'arg_%i' % (self.argcount-1))
 
 	def assign(self, name):
@@ -451,6 +502,20 @@ class Compiler(object):
 	def avec(self):
 		tlist = self.rstack.pop()
 		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
+
+	@word('call')
+	def call(self):
+		name = self.rstack.pop()
+
+		if name in self.macros:
+			atoms = self.macros[name]
+			self.atoms.insert(atoms)
+		else:
+			if name in bwords:
+				consumes, _ = bwords[name]
+			else:
+				consumes = len(self.wordtypes[name][0])
+			self.rstack.push(tuple([name] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')

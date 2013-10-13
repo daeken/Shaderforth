@@ -4,13 +4,13 @@
 	@vec2 =pos
 ;
 
-: rot ( vec2 float -> vec2 )
-	:m _ c * swap s * ;
-	=>vec
-	dup sin =>s cos =>c
+: rot ( vec:vec2 a:float -> vec2 )
+	:m _ ( a b f ) a c * b s * *f ;
+	a sin =>s
+	a cos =>c
 	[
-		vec .y.x _ -
-		vec .x.y _ +
+		vec .x.y &- _
+		vec .y.x &+ _
 	]v
 ;
 
@@ -20,9 +20,8 @@
 	iGlobalTime + =>time
 	pos length =>r
 
-	pos time r + rot angle =>ta
-	ta 3.1416 4.0 / mod
-	 =>wing
+	pos time r time sin * + rot angle =>ta
+	ta 3.1416 4.0 / mod =wing
 
 	[
 		time 2.7 * cos abs wing +
