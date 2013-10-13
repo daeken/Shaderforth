@@ -157,7 +157,7 @@ class Compiler(object):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
 
-			if atom[0] in '+-/*<>=':
+			if atom[0] in '+ - / * < > <= >= =='.split(' '):
 				if len(atom) == 2:
 					return '%s (%s)' % (atom[0], structure(atom[1]))
 				else:
