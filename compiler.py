@@ -674,6 +674,10 @@ class Compiler(object):
 	def continue_(self):
 		self.effects.append(('continue', ))
 
+	@word(',')
+	def nullcomma(self):
+		pass
+
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
 
