@@ -188,7 +188,7 @@ class Compiler(object):
 			for i, elem in enumerate(macro):
 				if elem in spec:
 					macro[i] = '__macro_' + name + '_' + elem
-				elif len(elem) > 1 and elem[0] == '*':
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
 					macro[i] = '*__macro_' + name + '_' + elem[1:]
 			macros[name] = preamble + macro
 
@@ -468,7 +468,7 @@ class Compiler(object):
 
 	@word('swap')
 	def swap(self):
-		b, a = self.rstack.pop(), self.rstack.pop()
+		a, b = self.rstack.pop(), self.rstack.pop()
 		self.rstack.push(a)
 		self.rstack.push(b)
 
