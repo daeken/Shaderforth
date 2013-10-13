@@ -116,15 +116,22 @@ glfuncs = dict(
 	mod=2, 
 	tan=1, 
 	min=2, 
+	max=2, 
 	length=1, 
 	normalize=1, 
 	cross=2, 
 	mix=3, 
+	mat2=4, 
+	mat3=9, 
+	mat4=16, 
 )
 gltypes = dict(
 	dot='float', 
 	vec4='vec4',
-	length='float'
+	length='float', 
+	mat2='mat2', 
+	mat3='mat3', 
+	mat4='mat4', 
 )
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
@@ -397,6 +404,11 @@ class Compiler(object):
 				self.rstack = self.sstack.pop()
 				self.rstack.push(temp)
 				self.avec()
+			elif token == ']m':
+				temp = self.rstack.list
+				self.rstack = self.sstack.pop()
+				self.rstack.push(temp)
+				self.amat()
 			elif token == '{':
 				self.rstack.push(self.block())
 			else:
@@ -574,6 +586,19 @@ class Compiler(object):
 	def avec(self):
 		tlist = self.rstack.pop()
 		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
+
+	@word('amat')
+	def amat(self):
+		tlist = self.rstack.pop()
+		if len(tlist) == 4:
+			size = 2
+		elif len(tlist) == 9:
+			size = 3
+		elif len(tlist) == 16:
+			size = 4
+		else:
+			assert False
+		self.rstack.push(tuple(['mat%i' % size] + tlist))
 
 	@word('call')
 	def call(self):
