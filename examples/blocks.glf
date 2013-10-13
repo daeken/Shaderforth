@@ -9,5 +9,6 @@
 gl_FragCoord .xy iResolution .xy / =p
 
 { 1.0 =c } p .y 0.5 > when
+{ 1.0 c - =c } { 1.0 =c } p .y 0.5 < if
 
 [ c c c 1.0 ]v =gl_FragColor

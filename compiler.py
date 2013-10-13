@@ -181,7 +181,9 @@ class Compiler(object):
 				defd.append(name)
 				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name), True
 			elif atom[0] == 'if':
-				return 'if(%s) {' % structure(atom[1])
+				return 'if(%s) {' % structure(atom[1]), True
+			elif atom[0] == 'else':
+				return '} else {', True
 			elif atom[0] == 'endblock':
 				return '}', True
 			else:
@@ -577,7 +579,7 @@ class Compiler(object):
 		self.effects.append(('for', var, 0, count))
 		self.rstack.push('__term__')
 		self.rstack.push(('var', var))
-		self.atoms.insert(list(block) + ['endblock'])
+		self.atoms.insert(list(block) + ['__endblock'])
 		self.locals[var] = Type('int')
 
 	@word('when')
@@ -587,9 +589,29 @@ class Compiler(object):
 
 		self.effects.append(('if', cond))
 		self.rstack.push('__term__')
-		self.atoms.insert(list(block) + ['endblock'])
+		self.atoms.insert(list(block) + ['__endblock'])
 
-	@word('endblock')
+	@word('if')
+	def if_(self):
+		cond = self.rstack.pop()
+		else_ = self.rstack.pop()
+		if_ = self.rstack.pop()
+
+		self.effects.append(('if', cond))
+		self.rstack.push(else_)
+		self.rstack.push('__if_term__')
+		self.atoms.insert(list(if_) + ['__else'])
+
+	@word('__else')
+	def else_(self):
+		self.effects.append(('else', ))
+		while self.rstack.pop() != '__if_term__':
+			pass
+		else_ = self.rstack.pop()
+		self.rstack.push('__term__')
+		self.atoms.insert(list(else_) + ['__endblock'])
+
+	@word('__endblock')
 	def endblock(self):
 		self.effects.append(('endblock', ))
 		while self.rstack.pop() != '__term__':
