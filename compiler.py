@@ -61,6 +61,9 @@ class Stack(object):
 	def __len__(self):
 		return len(self.list)
 
+	def __repr__(self):
+		return 'Stack(%r)' % self.list
+
 class Code(object):
 	def __init__(self, elems):
 		self.elems = elems
@@ -119,6 +122,7 @@ for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
 	def __init__(self, code, shadertoy=False):
+		self.tempi = 0
 		self.shadertoy = shadertoy
 		Compiler.instance = self
 		self.globals = dict(
@@ -167,6 +171,12 @@ class Compiler(object):
 				return atom[1]
 			elif atom[0] == 'return':
 				return 'return %s' % structure(atom[1])
+			elif atom[0] == 'for':
+				_, name, start, top = atom
+				defd.append(name)
+				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name)
+			elif atom[0] == 'endblock':
+				return '}'
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -300,7 +310,7 @@ class Compiler(object):
 		while self.atoms.peek() != None:
 			token = self.atoms.consume()
 
-			if not isinstance(token, unicode):
+			if not isinstance(token, unicode) and not isinstance(token, str):
 				self.rstack.push(token)
 			elif token in bwords:
 				consumes, fn = bwords[token]
@@ -345,6 +355,8 @@ class Compiler(object):
 				self.rstack = self.sstack.pop()
 				self.rstack.push(temp)
 				self.avec()
+			elif token == '{':
+				self.rstack.push(self.block())
 			else:
 				print 'unknown token', token
 
@@ -353,6 +365,40 @@ class Compiler(object):
 			self.effects.append(('return', self.rstack.pop()))
 
 		return self.locals, self.effects
+
+	def block(self):
+		depth = 1
+		cdepth = 0
+		atoms = []
+		while True:
+			token = self.atoms.consume()
+			atoms.append(token)
+			if token == '(':
+				cdepth += 1
+			elif token == ')':
+				cdepth -= 1
+			elif cdepth == 0 and token in ('{', '\\{', '/{'):
+				depth += 1
+			elif cdepth == 0 and token == '}':
+				depth -= 1
+				if depth == 0:
+					break
+		return atoms[:-1]
+
+	def tempname(self):
+		self.tempi += 1
+		return '_temp_%i_' % self.tempi
+
+	def eatcomment(self):
+		depth = 1
+		while self.atoms.peek() != None:
+			token = self.atoms.consume()
+			if token == ')':
+				depth -= 1
+				if depth == 0:
+					return
+			elif token == '(':
+				depth += 1
 
 	def argument(self):
 		assert self.argcount > 0
@@ -440,7 +486,7 @@ class Compiler(object):
 				return mat or vec or other
 		else:
 			return 'float'
-		return 'inferred'
+		assert False
 
 	@word('dup')
 	def dup(self):
@@ -482,15 +528,7 @@ class Compiler(object):
 
 	@word('(')
 	def nullparen_open(self):
-		depth = 1
-		while self.atoms.peek() != None:
-			token = self.atoms.consume()
-			if token == ')':
-				depth -= 1
-				if depth == 0:
-					return
-			elif token == '(':
-				depth += 1
+		self.eatcomment()
 
 	@word('flatten')
 	def flatten(self):
@@ -515,6 +553,24 @@ class Compiler(object):
 			else:
 				consumes = len(self.wordtypes[name][0])
 			self.rstack.push(tuple([name] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
+
+	@word('times')
+	def times(self):
+		count = self.rstack.pop()
+		block = self.rstack.pop()
+		var = self.tempname()
+
+		self.effects.append(('for', var, 0, count))
+		self.rstack.push('__term__')
+		self.rstack.push(('var', var))
+		self.atoms.insert(list(block) + ['endblock'])
+		self.locals[var] = Type('int')
+
+	@word('endblock')
+	def endblock(self):
+		self.effects.append(('endblock', ))
+		while self.rstack.pop() != '__term__':
+			pass
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')

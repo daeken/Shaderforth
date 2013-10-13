@@ -20,8 +20,8 @@
 	iGlobalTime + =>time
 	pos length =>r
 
-	pos time r time 3.0 * sin * + rot angle =>ta
-	ta 3.1416 4.0 / mod =wing
+	pos time r time 3.0 * sin * + rot =ta
+	ta angle 3.1416 4.0 / mod =wing
 
 	[
 		time 2.7 * cos abs wing +
