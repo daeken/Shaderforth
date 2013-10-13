@@ -355,7 +355,6 @@ class Compiler(object):
 		return self.locals, self.effects
 
 	def argument(self):
-		print self.atoms
 		assert self.argcount > 0
 		self.argcount -= 1
 		return ('arg', 'arg_%i' % (self.argcount-1))
