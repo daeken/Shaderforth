@@ -117,6 +117,9 @@ glfuncs = dict(
 	tan=1, 
 	min=2, 
 	length=1, 
+	normalize=1, 
+	cross=2, 
+	mix=3, 
 )
 gltypes = dict(
 	dot='float', 
@@ -150,8 +153,6 @@ class Compiler(object):
 				continue
 
 			print type, rename(name) + ';'
-
-		defd = []
 
 		def structure(atom):
 			if not isinstance(atom, tuple):
@@ -197,6 +198,8 @@ class Compiler(object):
 			if name != 'main':
 				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 		for name, (locals, effects) in self.words.items():
+			defd = []
+			
 			print '%s %s(%s) {' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
 				line = structure(effect)
@@ -490,6 +493,8 @@ class Compiler(object):
 					return 'float'
 				else:
 					return 'vec%i' % (len(expr[0])-1)
+			elif expr[0].startswith('vec'):
+				return expr[0]
 			elif expr[0] in gltypes:
 				return gltypes[expr[0]]
 			elif expr[0] in self.words:
