@@ -154,6 +154,7 @@ class Compiler(object):
 
 			print type, rename(name) + ';'
 
+		indentlevel = [1]
 		def structure(atom):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
@@ -180,12 +181,15 @@ class Compiler(object):
 			elif atom[0] == 'for':
 				_, name, start, top = atom
 				defd.append(name)
+				indentlevel[0] += 1
 				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name), True
 			elif atom[0] == 'if':
+				indentlevel[0] += 1
 				return 'if(%s) {' % structure(atom[1]), True
 			elif atom[0] == 'else':
 				return '} else {', True
 			elif atom[0] == 'endblock':
+				indentlevel[0] -= 1
 				return '}', True
 			elif atom[0] == 'break':
 				return 'break'
@@ -199,17 +203,22 @@ class Compiler(object):
 				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 		for name, (locals, effects) in self.words.items():
 			defd = []
-			
+
 			print '%s %s(%s) {' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
+				prev = indentlevel[0]
 				line = structure(effect)
 				sup = False
 				if isinstance(line, tuple):
 					line, sup = line
 				if sup:
-					print '\t' + line
+					if prev <= indentlevel[0]:
+						off = 1
+					else:
+						off = 0
+					print '\t' * (indentlevel[0] - off) + line
 				else:
-					print '\t' + line + ';'
+					print '\t' * indentlevel[0] + line + ';'
 			print '}'
 
 	def parsewords(self, code):
