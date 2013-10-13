@@ -98,6 +98,11 @@ bwords = {
 	'-' : (2, None), 
 	'*' : (2, None), 
 	'/' : (2, None), 
+	'<' : (2, None), 
+	'>' : (2, None), 
+	'<=' : (2, None), 
+	'>=' : (2, None), 
+	'==' : (2, None), 
 }
 glfuncs = dict(
 	dot=2, 
@@ -152,7 +157,7 @@ class Compiler(object):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
 
-			if atom[0] in '+-/*':
+			if atom[0] in '+-/*<>=':
 				if len(atom) == 2:
 					return '%s (%s)' % (atom[0], structure(atom[1]))
 				else:
@@ -174,9 +179,11 @@ class Compiler(object):
 			elif atom[0] == 'for':
 				_, name, start, top = atom
 				defd.append(name)
-				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name)
+				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name), True
+			elif atom[0] == 'if':
+				return 'if(%s) {' % structure(atom[1])
 			elif atom[0] == 'endblock':
-				return '}'
+				return '}', True
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -186,7 +193,14 @@ class Compiler(object):
 		for name, (locals, effects) in self.words.items():
 			print '%s %s(%s) {' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
-				print '\t' + structure(effect) + ';'
+				line = structure(effect)
+				sup = False
+				if isinstance(line, tuple):
+					line, sup = line
+				if sup:
+					print '\t' + line
+				else:
+					print '\t' + line + ';'
 			print '}'
 
 	def parsewords(self, code):
@@ -565,6 +579,15 @@ class Compiler(object):
 		self.rstack.push(('var', var))
 		self.atoms.insert(list(block) + ['endblock'])
 		self.locals[var] = Type('int')
+
+	@word('when')
+	def when(self):
+		cond = self.rstack.pop()
+		block = self.rstack.pop()
+
+		self.effects.append(('if', cond))
+		self.rstack.push('__term__')
+		self.atoms.insert(list(block) + ['endblock'])
 
 	@word('endblock')
 	def endblock(self):
