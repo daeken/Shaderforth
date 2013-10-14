@@ -39,22 +39,39 @@
 :m ty ( p t ) p [ 0.0 t   0.0 ]v + ;
 :m tz ( p t ) p [ 0.0 0.0 t   ]v + ;
 
+: wobble ( p:vec3 -> vec3 )
+	[
+		p .y 7.0 * time 0.3 * + sin 0.05 *
+		p .y 5.0 * time 1.7 * + sin 0.05 *
+		p .y 9.0 * time + cos 0.05 *
+	]v p +
+;
+
 : scene ( p:vec3 -> vec2 )
 	p 5.0 tz =p
 
 	[
-		[ p [ -0.5 -0.7 0.4 ]v + [ 0.0 1.2 5.0 ]v iGlobalTime rotate [ 0.3 0.3 0.5 ]v box 0.0 ]v
-		[ p [ 0.2 0.3 0.4 ]v + [ 1.0 0.5 0.2 ]v iGlobalTime rotate [ 0.4 0.4 0.5 ]v box 1.0 ]v
+		[ p [ time sin 2.0 * -0.3 3.0 ]v + [ 0.5 0.6 0.5 ]v box 0.0 ]v
+		[ p [ 0.2 0.5 0.4 ]v + [ 1.0 0.5 0.2 ]v iGlobalTime rotate [ 0.5 0.2 ]v torus 1.0 ]v
 		[ p [ time sin time 0.5 * cos time 1.7 * sin ]v + 0.4 sphere 2.0 ]v
 	] matunion
 ;
 
-: material ( id:float -> vec4 )
+: color ( id:float -> vec4 )
 	[
-		id 0.0 == { [ 0.8 0.0 0.0 30.0 ]v return }
+		id 0.0 == { [ 1.0 1.0 1.0 100.0 ]v return }
 		id 1.0 == { [ 0.0 0.8 0.0 50.0 ]v return }
 		id 2.0 == { [ 0.0 0.0 0.8 10.0 ]v return }
 		{ [ 1.0 1.0 0.0 0.0 ]v return }
+	] cond
+;
+: material ( id:float -> vec4 )
+	( reflection exponent, refractive index, diffuse factor, ambient factor )
+	[
+		id 0.0 == { [ 0.001 0.0 0.3 0.0 ]v return }
+		id 1.0 == { [ 1.0 1.0 1.0 1.0 ]v return }
+		id 2.0 == { [ 3.0 0.0 1.0 1.0 ]v return }
+		{ [ 0.0 0.0 1.0 1.0 ]v return }
 	] cond
 ;
 
@@ -92,7 +109,7 @@ cp =ray
 
 10 =>iters
 {
-	float iters float / 1.0 swap - 2.0 pow =level
+	float iters float / 1.0 swap - =level
 
 	{
 		ray scene =s
@@ -101,12 +118,12 @@ cp =ray
 
 		{ break } s .x 0.01 < when
 		{ far =dist } dist far > when
-	} 40 times
+	} 50 times
 
 	{
 		ray getnormal =normal
 
-		[ 0.0 8.0 5.0 ]v =>lightpos
+		[ 0.0 8.0 0.0 ]v =>lightpos
 		[ 1.0 1.0 1.0 ]v =>lightcolor
 		lightpos ray - normalize =ivec
 		ivec normal dot =incidence
@@ -114,25 +131,27 @@ cp =ray
 		lightcolor incidence * =>diffuse
 		0.1 =>ambient
 
+		s .y color =col
 		s .y material =mat
 
 		0.0 =specular
 		lightpos ray - normalize =>lightdir
 		{
 			lightdir cp + normalize normal dot
-			0.0 max mat .w pow
+			0.0 max col .w pow
 			lightpos ray - length / =specular
-		} mat .w 0.0 != normal lightdir dot 0.0 >= and when
+		} col .w 0.0 != normal lightdir dot 0.0 >= and when
 
-		c mat .rgb diffuse ambient + specular + * level * + =c
+		c col .rgb diffuse mat .z * ambient mat .w * + specular + * level mat .x pow * + =c
 
 		{
 			dir normal reflect normalize =dir
 			ray dir + =ray
 			ray =cp
+			0.0 =dist
 		} {
 			break
-		} mat .w 0.0 > if
+		} mat .x 0.0 > if
 	} {
 		break
 	} dist far < if
