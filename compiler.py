@@ -103,6 +103,7 @@ bwords = {
 	'<=' : (2, None), 
 	'>=' : (2, None), 
 	'==' : (2, None), 
+	'!=' : (2, None), 
 }
 glfuncs = dict(
 	dot=2, 
@@ -124,14 +125,19 @@ glfuncs = dict(
 	mat2=4, 
 	mat3=9, 
 	mat4=16, 
+	float=1, 
+	reflect=2, 
 )
 gltypes = dict(
 	dot='float', 
+	vec2='vec2',
+	vec3='vec3',
 	vec4='vec4',
 	length='float', 
 	mat2='mat2', 
 	mat3='mat3', 
 	mat4='mat4', 
+	float='float', 
 )
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
@@ -166,7 +172,7 @@ class Compiler(object):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
 
-			if atom[0] in '+ - / * < > <= >= =='.split(' '):
+			if atom[0] in '+ - / * < > <= >= == != && ||'.split(' '):
 				if len(atom) == 2:
 					return '%s (%s)' % (atom[0], structure(atom[1]))
 				else:
@@ -195,6 +201,8 @@ class Compiler(object):
 				return 'if(%s) {' % structure(atom[1]), True
 			elif atom[0] == 'else':
 				return '} else {', True
+			elif atom[0] == 'elif':
+				return '} else if(%s) {' % structure(atom[1]), True
 			elif atom[0] == 'endblock':
 				indentlevel[0] -= 1
 				return '}', True
@@ -202,6 +210,9 @@ class Compiler(object):
 				return 'break'
 			elif atom[0] == 'continue':
 				return 'continue'
+			elif atom[0] == '?:':
+				c, a, b = map(structure, atom[1:])
+				return '(%s) ? (%s) : (%s)' % (c, a, b)
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -253,8 +264,22 @@ class Compiler(object):
 		in_macro = None
 		preamble = []
 
+		comment_depth = 0
+
 		while parsed.peek() is not None:
 			token = parsed.consume()
+
+			if token == '(':
+				comment_depth += 1
+				cur.append(token)
+				continue
+
+			if comment_depth > 0:
+				if token == ')':
+					comment_depth -= 1
+				cur.append(token)
+				continue
+
 			if token == ':':
 				modstack.append(cur)
 				name = parsed.consume()
@@ -305,16 +330,6 @@ class Compiler(object):
 					sanitize(in_macro, cur)
 					in_macro = None
 				cur = modstack.pop()
-			elif token == '(':
-				depth = 1
-				while parsed.peek() != None:
-					token = parsed.consume()
-					if token == '(':
-						depth += 1
-					elif token == ')':
-						depth -= 1
-						if depth == 0:
-							break
 			else:
 				cur.append(token)
 
@@ -345,6 +360,8 @@ class Compiler(object):
 		self.effects = []
 		if name != '__globals':
 			self.argcount = len(self.wordtypes[name][0])+1
+			argtypes = self.wordtypes[name][0]
+			self.argtypes = dict(('arg_%i' % i, type) for i, type in enumerate(argtypes))
 
 		while self.atoms.peek() != None:
 			token = self.atoms.consume()
@@ -437,7 +454,27 @@ class Compiler(object):
 				depth -= 1
 				if depth == 0:
 					break
-		return atoms[:-1]
+
+		atoms = atoms[:-1]
+		if atoms[0] == '(':
+			spec = []
+			for atom in atoms[1:]:
+				if atom == ')':
+					break
+				spec.append(atom)
+			atoms = atoms[2+len(spec):]
+			name = self.tempname()
+			preamble = []
+			for elem in spec[::-1]:
+				preamble.append('=>__macro_' + name + '_' + elem)
+			for i, elem in enumerate(atoms):
+				if elem in spec:
+					atoms[i] = '__macro_' + name + '_' + elem
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
+					atoms[i] = '*__macro_' + name + '_' + elem[1:]
+			atoms = preamble + atoms
+
+		return atoms
 
 	def tempname(self):
 		self.tempi += 1
@@ -509,6 +546,8 @@ class Compiler(object):
 					return self.locals[name].name
 				else:
 					assert False
+			elif expr[0] == 'arg':
+				return self.argtypes[expr[1]]
 			elif expr[0][0] == '.':
 				if len(expr[0]) == 2:
 					return 'float'
@@ -530,7 +569,7 @@ class Compiler(object):
 						vec = type
 					else:
 						other = type
-				return mat or vec or other
+				return vec or mat or other
 		else:
 			return 'float'
 		assert False
@@ -585,7 +624,16 @@ class Compiler(object):
 	@word('avec')
 	def avec(self):
 		tlist = self.rstack.pop()
-		self.rstack.push(tuple(['vec%i' % len(tlist)] + tlist))
+		types = map(self.infertype, tlist)
+		length = 0
+		for type in types:
+			if type.startswith('vec'):
+				length += int(type[3:])
+			elif type == 'float':
+				length += 1
+			else:
+				assert False
+		self.rstack.push(tuple(['vec%i' % length] + tlist))
 
 	@word('amat')
 	def amat(self):
@@ -648,13 +696,13 @@ class Compiler(object):
 
 		self.effects.append(('if', cond))
 		self.rstack.push(else_)
-		self.rstack.push('__if_term__')
+		self.rstack.push('__term__')
 		self.atoms.insert(list(if_) + ['__else'])
 
 	@word('__else')
 	def else_(self):
 		self.effects.append(('else', ))
-		while self.rstack.pop() != '__if_term__':
+		while self.rstack.pop() != '__term__':
 			pass
 		else_ = self.rstack.pop()
 		self.rstack.push('__term__')
@@ -677,6 +725,61 @@ class Compiler(object):
 	@word(',')
 	def nullcomma(self):
 		pass
+
+	@word('select')
+	def select(self):
+		cond = self.rstack.pop()
+		b = self.rstack.pop()
+		a = self.rstack.pop()
+
+		self.rstack.push(('?:', cond, a, b))
+
+	@word('return')
+	def return_(self):
+		self.effects.append(('return', self.rstack.pop()))
+
+	@word('cond')
+	def cond(self):
+		arr = self.rstack.pop()
+
+		(cond, block), arr = arr[:2], arr[2:]
+		block = self.blockify(block)
+
+		self.effects.append(('if', cond))
+		self.rstack.push(arr)
+		self.rstack.push('__term__')
+		self.atoms.insert(list(block) + ['__cond'])
+
+	@word('__cond')
+	def __cond(self):
+		while self.rstack.pop() != '__term__':
+			pass
+		arr = self.rstack.pop()
+		if len(arr) == 0:
+			self.effects.append(('endblock', ))
+			return
+		elif len(arr) == 1:
+			block = arr[0]
+			arr = []
+			self.effects.append(('else', ))
+		else:
+			(cond, block), arr = arr[:2], arr[2:]
+			self.effects.append(('elif', cond))
+
+		block = self.blockify(block)
+		self.rstack.push(arr)
+		self.rstack.push('__term__')
+		self.atoms.insert(list(block) + ['__cond'])
+
+	@word('and')
+	def and_(self):
+		b, a = self.rstack.pop(), self.rstack.pop()
+		self.rstack.push(('&&', a, b))
+
+	@word('or')
+	def or_(self):
+		b, a = self.rstack.pop(), self.rstack.pop()
+		self.rstack.push(('||', a, b))
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
