@@ -28,8 +28,8 @@
 ;
 
 :m union \min ;
-:m matunion \{ ( a b ) a b a .distance b .distance < select } ;
-:m subtract \{ swap negate swap max } ;
+:m matunion \{ ( $a $b ) a b a .distance b .distance < select } ;
+:m subtract \{ ( d1 d2 ) d1 negate d2 max } ;
 :m intersect \max ;
 :m repeat ( block p c ) p c mod 0.5 c * - *block ;
 
@@ -84,12 +84,12 @@
 
 :m getnormal ( p )
 	[
-		p [ eps 0.0 0.0 ]v + scene .distance
-		p [ eps negate 0.0 0.0 ]v + scene .distance -
-		p [ 0.0 eps 0.0 ]v + scene .distance
-		p [ 0.0 eps negate 0.0 ]v + scene .distance -
-		p [ 0.0 0.0 eps ]v + scene .distance
-		p [ 0.0 0.0 eps negate ]v + scene .distance -
+		p eps        tx scene .distance
+		p eps negate tx scene .distance -
+		p eps        ty scene .distance
+		p eps negate ty scene .distance -
+		p eps        tz scene .distance
+		p eps negate tz scene .distance -
 	]v normalize
 ;
 
