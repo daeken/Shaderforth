@@ -29,7 +29,7 @@
 :m plane ( p n ) p n .xyz dot n .w + ;
 
 :m union \min ;
-:m matunion \{ ( $a $b ) a b a .distance b .distance < select } ;
+:m hitunion \{ ( $a $b ) a b a .distance b .distance < select } ;
 :m subtract \{ ( d1 d2 ) d1 negate d2 max } ;
 :m intersect \max ;
 :m repeat ( block p c ) p c mod 0.5 c * - *block ;
@@ -62,7 +62,7 @@
 		[ p [ time sin 1.8 * 0.0 3.0 ]v + [ 2.0 2.0 0.1 ]v box 0 ] hit
 		[ p trotate [ 0.2 0.5 0.4 ]v + [ 0.5 0.2 ]v torus 1 ] hit
 		[ p trotate [ 0.2 0.5 0.4 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
-	] matunion
+	] hitunion
 ;
 
 :struct material
