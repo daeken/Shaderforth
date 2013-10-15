@@ -28,7 +28,7 @@
 ;
 
 :m union \min ;
-:m matunion \{ ( a b ) a b a .x b .x < select } ;
+:m matunion \{ ( a b ) a b a .distance b .distance < select } ;
 :m subtract \{ swap negate swap max } ;
 :m intersect \max ;
 :m repeat ( block p c ) p c mod 0.5 c * - *block ;
@@ -47,13 +47,18 @@
 	]v p +
 ;
 
-: scene ( p:vec3 -> vec2 )
+:struct hit
+	@float =distance
+	@int =material
+;
+
+: scene ( p:vec3 -> hit )
 	p 5.0 tz =p
 
 	[
-		[ p [ time sin 2.0 * -0.3 3.0 ]v + [ 0.5 0.6 0.5 ]v box 0.0 ]v
-		[ p [ 0.2 0.5 0.4 ]v + [ 1.0 0.5 0.2 ]v iGlobalTime rotate [ 0.5 0.2 ]v torus 1.0 ]v
-		[ p [ time sin time 0.5 * cos time 1.7 * sin ]v + 0.4 sphere 2.0 ]v
+		[ p [ time sin 2.0 * -0.3 3.0 ]v + [ 0.5 0.6 0.5 ]v box 0 ] hit
+		[ p [ 0.2 0.5 0.4 ]v + [ 1.0 0.5 0.2 ]v iGlobalTime rotate [ 0.5 0.2 ]v torus 1 ] hit
+		[ p [ time sin time 0.5 * cos time 1.7 * sin ]v + 0.4 sphere 2 ] hit
 	] matunion
 ;
 
@@ -66,25 +71,25 @@
 	@float =refraction
 ;
 
-: get-material ( id:float -> material )
+: get-material ( id:int -> material )
 	[
-		id 0.0 == { [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 0.001 0.0 ] material return }
-		id 1.0 == { [ [ 1.0 0.0 0.0 ]v 0.2 0.8 30.0 0.9 0.0 ] material return }
-		id 2.0 == { [ [ 0.0 1.0 0.0 ]v 0.2 0.7 30.0 1.0 0.0 ] material return }
-		          { [ [ 0.0 0.0 1.0 ]v 0.1 0.7 40.0 1.2 0.0 ] material return }
-	] cond
+		0 [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 0.001 0.0 ] material
+		1 [ [ 1.0 0.0 0.0 ]v 0.2 0.8 30.0 0.9 0.0 ] material
+		2 [ [ 0.0 1.0 0.0 ]v 0.2 0.7 30.0 1.0 0.0 ] material
+		  [ [ 0.0 0.0 1.0 ]v 0.1 0.7 40.0 1.2 0.0 ] material
+	] id choose
 ;
 
 0.0001 =>eps
 
 :m getnormal ( p )
 	[
-		p [ eps 0.0 0.0 ]v + scene .x
-		p [ eps negate 0.0 0.0 ]v + scene .x -
-		p [ 0.0 eps 0.0 ]v + scene .x
-		p [ 0.0 eps negate 0.0 ]v + scene .x -
-		p [ 0.0 0.0 eps ]v + scene .x
-		p [ 0.0 0.0 eps negate ]v + scene .x -
+		p [ eps 0.0 0.0 ]v + scene .distance
+		p [ eps negate 0.0 0.0 ]v + scene .distance -
+		p [ 0.0 eps 0.0 ]v + scene .distance
+		p [ 0.0 eps negate 0.0 ]v + scene .distance -
+		p [ 0.0 0.0 eps ]v + scene .distance
+		p [ 0.0 0.0 eps negate ]v + scene .distance -
 	]v normalize
 ;
 
@@ -107,16 +112,18 @@ cp =ray
 [ 0.0 0.0 ]v =s
 [ 0.0 0.0 0.0 ]v =c
 
+[ far -1 ] hit =cur
+
 10 =>iters
 {
 	float iters float / 1.0 swap - =level
 
 	{
-		ray scene =s
-		dist s .x + =dist
-		ray dir s .x * + =ray
+		ray scene =cur
+		dist cur .distance + =dist
+		ray dir cur .distance * + =ray
 
-		{ break } s .x 0.01 < when
+		{ break } cur .distance 0.01 < when
 		{ far =dist } dist far > when
 	} 50 times
 
@@ -131,7 +138,7 @@ cp =ray
 		lightcolor incidence * =>diffuse
 		0.1 =>ambient
 
-		s .y get-material =mat
+		cur .material get-material =mat
 
 		0.0 =specular
 		lightpos ray - normalize =>lightdir
