@@ -57,21 +57,21 @@
 	] matunion
 ;
 
-: color ( id:float -> vec4 )
-	[
-		id 0.0 == { [ 1.0 1.0 1.0 100.0 ]v return }
-		id 1.0 == { [ 0.0 0.8 0.0 50.0 ]v return }
-		id 2.0 == { [ 0.0 0.0 0.8 10.0 ]v return }
-		{ [ 1.0 1.0 0.0 0.0 ]v return }
-	] cond
+:struct material
+	@vec3 =color
+	@float =ambient
+	@float =diffuse
+	@float =specular
+	@float =reflection
+	@float =refraction
 ;
-: material ( id:float -> vec4 )
-	( reflection exponent, refractive index, diffuse factor, ambient factor )
+
+: get-material ( id:float -> material )
 	[
-		id 0.0 == { [ 0.001 0.0 0.3 0.0 ]v return }
-		id 1.0 == { [ 1.0 1.0 1.0 1.0 ]v return }
-		id 2.0 == { [ 3.0 0.0 1.0 1.0 ]v return }
-		{ [ 0.0 0.0 1.0 1.0 ]v return }
+		id 0.0 == { [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 0.001 0.0 ] material return }
+		id 1.0 == { [ [ 1.0 0.0 0.0 ]v 0.2 0.8 30.0 0.9 0.0 ] material return }
+		id 2.0 == { [ [ 0.0 1.0 0.0 ]v 0.2 0.7 30.0 1.0 0.0 ] material return }
+		          { [ [ 0.0 0.0 1.0 ]v 0.1 0.7 40.0 1.2 0.0 ] material return }
 	] cond
 ;
 
@@ -131,18 +131,17 @@ cp =ray
 		lightcolor incidence * =>diffuse
 		0.1 =>ambient
 
-		s .y color =col
-		s .y material =mat
+		s .y get-material =mat
 
 		0.0 =specular
 		lightpos ray - normalize =>lightdir
 		{
 			lightdir cp + normalize normal dot
-			0.0 max col .w pow
+			0.0 max mat .specular pow
 			lightpos ray - length / =specular
-		} col .w 0.0 != normal lightdir dot 0.0 >= and when
+		} mat .specular 0.0 != normal lightdir dot 0.0 >= and when
 
-		c col .rgb diffuse mat .z * ambient mat .w * + specular + * level mat .x pow * + =c
+		c mat .color diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * + =c
 
 		{
 			dir normal reflect normalize =dir
@@ -151,7 +150,7 @@ cp =ray
 			0.0 =dist
 		} {
 			break
-		} mat .x 0.0 > if
+		} mat .reflection 0.0 > if
 	} {
 		break
 	} dist far < if

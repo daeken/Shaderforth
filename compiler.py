@@ -216,14 +216,14 @@ class Compiler(object):
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
-		for name in self.words:
-			if name != 'main':
-				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 		for name, elems in self.structs.items():
 			print 'struct %s {' % name
 			for name, type in elems:
 				print '\t%s %s;' % (type, name)
 			print '};'
+		for name in self.words:
+			if name != 'main':
+				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
 		for name, (locals, effects, localorder) in self.words.items():
 			defd = []
 
