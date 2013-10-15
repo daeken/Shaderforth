@@ -179,22 +179,53 @@ class Compiler(object):
 			print self.rename(str(type)), self.rename(name) + ';'
 
 		indentlevel = [1]
+		operators = '+ - / * < > <= >= == != && ||'.split(' ')
+		precedence = {
+			'+'  : 2, 
+			'-'  : 2, 
+			'*'  : 3, 
+			'/'  : 3, 
+			'==' : 4, 
+			'!=' : 4, 
+			'<'  : 4, 
+			'>'  : 4, 
+			'<=' : 4, 
+			'>=' : 4, 
+			'||' : 4, 
+			'&&' : 4, 
+			'.'  : 10, 
+			'?:' : 10, 
+		}
+		def paren(atom, op=None):
+			if not isinstance(atom, tuple):
+				return unicode(atom)
+
+			wrap = False
+			if atom[0] in operators:
+				wrap = precedence[atom[0]] < precedence[op]
+			elif atom[0] == '?:':
+				wrap = True
+
+			if wrap:
+				return '(%s)' % structure(atom)
+			else:
+				return structure(atom)
 		def structure(atom):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
 
-			if atom[0] in '+ - / * < > <= >= == != && ||'.split(' '):
+			if atom[0] in operators:
 				if len(atom) == 2:
-					return '%s (%s)' % (atom[0], structure(atom[1]))
+					return '%s %s' % (atom[0], paren(atom[1], atom[0]))
 				else:
-					return '(%s) %s (%s)' % (structure(atom[1]), atom[0], structure(atom[2]))
+					return '%s %s %s' % (paren(atom[1], atom[0]), atom[0], paren(atom[2], atom[0]))
 			elif atom[0] == '=':
 				return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
 				if atom[2]:
 					swizzle = '.' + self.rename(atom[0][1:])
-				return '(%s)%s' % (structure(atom[1]), swizzle)
+				return '%s%s' % (paren(atom[1], '.'), swizzle)
 			elif atom[0] == 'var':
 				if atom[1].startswith('gl_') or atom[1] in self.globals or atom[1] in defd:
 					return self.rename(atom[1])
@@ -226,8 +257,8 @@ class Compiler(object):
 			elif atom[0] == 'continue':
 				return 'continue'
 			elif atom[0] == '?:':
-				c, a, b = map(structure, atom[1:])
-				return '(%s) ? (%s) : (%s)' % (c, a, b)
+				c, a, b = atom[1:]
+				return '%s ? %s : %s' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
 			else:
 				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
