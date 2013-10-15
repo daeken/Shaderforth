@@ -58,6 +58,13 @@ class Stack(object):
 			self.list.append(Compiler.instance.argument())
 		return self.list[-1]
 
+	def retrieve(self, offset, remove=False):
+		offset = len(self.list)-offset-1
+		elem = self.list[offset]
+		if remove:
+			self.list = self.list[:offset] + self.list[offset+1:]
+		return elem
+
 	def __len__(self):
 		return len(self.list)
 
@@ -254,14 +261,22 @@ class Compiler(object):
 	def parsewords(self, code):
 		def sanitize(name, macro):
 			spec = macrospec[name]
+			stored = [elem[1:] for elem in spec if elem.startswith('$')]
+			spec = [elem[1:] if elem.startswith('$') else elem for elem in spec]
 			preamble = []
-			for elem in spec[::-1]:
-				preamble.append('=>__macro_' + name + '_' + elem)
+			for i, elem in enumerate(spec):
+				if i != len(spec) - 1:
+					preamble.append(len(spec) - i - 1)
+					preamble.append('take')
+				if elem in stored:
+					preamble.append('=macro_' + name + '_' + elem)
+				else:
+					preamble.append('=>macro_' + name + '_' + elem)
 			for i, elem in enumerate(macro):
 				if elem in spec:
-					macro[i] = '__macro_' + name + '_' + elem
+					macro[i] = 'macro_' + name + '_' + elem
 				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
-					macro[i] = '*__macro_' + name + '_' + elem[1:]
+					macro[i] = '*macro_' + name + '_' + elem[1:]
 			macros[name] = preamble + macro
 
 		parsed = Code(parse(code))
@@ -486,27 +501,37 @@ class Compiler(object):
 		atoms = atoms[:-1]
 		if atoms[0] == '(':
 			spec = []
+			stored = []
 			for atom in atoms[1:]:
 				if atom == ')':
 					break
+				if atom.startswith('$'):
+					stored.append(atom[1:])
+					atom = atom[1:]
 				spec.append(atom)
 			atoms = atoms[2+len(spec):]
 			name = self.tempname()
 			preamble = []
-			for elem in spec[::-1]:
-				preamble.append('=>__macro_' + name + '_' + elem)
+			for i, elem in enumerate(spec):
+				if i != len(spec) - 1:
+					preamble.append(len(spec) - i - 1)
+					preamble.append('take')
+				if elem in stored:
+					preamble.append('=macro_' + name + '_' + elem)
+				else:
+					preamble.append('=>macro_' + name + '_' + elem)
 			for i, elem in enumerate(atoms):
 				if elem in spec:
-					atoms[i] = '__macro_' + name + '_' + elem
+					atoms[i] = 'macro_' + name + '_' + elem
 				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
-					atoms[i] = '*__macro_' + name + '_' + elem[1:]
+					atoms[i] = '*macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
 		return atoms
 
 	def tempname(self):
 		self.tempi += 1
-		return '_temp_%i_' % self.tempi
+		return 'temp_%i' % self.tempi
 
 	def eatcomment(self):
 		depth = 1
@@ -827,6 +852,12 @@ class Compiler(object):
 			cur = ('?:', ('==', val, comp), left, cur)
 
 		self.rstack.push(cur)
+
+	@word('take')
+	def take(self):
+		pos = self.rstack.pop()
+		elem = self.rstack.retrieve(pos, remove=True)
+		self.rstack.push(elem)
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
