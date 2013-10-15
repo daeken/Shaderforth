@@ -150,7 +150,7 @@ class Compiler(object):
 			gl_FragCoord=Type('vec4'), 
 			gl_FragColor=Type('vec4'), 
 		)
-		self.words, self.wordtypes, self.macros = self.parsewords(code)
+		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(code)
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
@@ -219,7 +219,12 @@ class Compiler(object):
 		for name in self.words:
 			if name != 'main':
 				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
-		for name, (locals, effects) in self.words.items():
+		for name, elems in self.structs.items():
+			print 'struct %s {' % name
+			for name, type in elems:
+				print '\t%s %s;' % (type, name)
+			print '};'
+		for name, (locals, effects, localorder) in self.words.items():
 			defd = []
 
 			print '%s %s(%s) {' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
@@ -258,6 +263,7 @@ class Compiler(object):
 		macrospec = {}
 		wordtypes = {'main' : ((), 'void')}
 		globals = []
+		structs = {}
 
 		modstack = []
 		cur = words['main']
@@ -325,6 +331,10 @@ class Compiler(object):
 			elif token == ':globals':
 				modstack.append(cur)
 				cur = globals
+			elif token == ':struct':
+				modstack.append(cur)
+				name = parsed.consume()
+				cur = structs[name] = []
 			elif token == ';':
 				if in_macro:
 					sanitize(in_macro, cur)
@@ -345,20 +355,29 @@ class Compiler(object):
 					break
 			words[name] = tokens
 
-		locals, effects = self.compile('__globals', globals)
+		locals, effects, localorder = self.compile('__globals', globals, pre=True)
 		self.globals.update(locals)
 		assert len(effects) == 0
 
-		return words, wordtypes, macros
+		sdefs = {}
+		for name, atoms in structs.items():
+			locals, effects, localorder = self.compile('__' + name, atoms, pre=True)
+			assert len(effects) == 0
+			sdefs[name] = [(ename, locals[ename]) for ename in localorder]
+			word(name)(lambda self: self.rstack.push(tuple([name] + self.rstack.pop())))
+			gltypes[name] = name
 
-	def compile(self, name, atoms):
+		return words, wordtypes, macros, sdefs
+
+	def compile(self, name, atoms, pre=False):
 		self.atoms = Code(atoms)
 		self.rstack = Stack()
 		self.sstack = Stack()
 		self.locals = {}
+		self.localorder = []
 		self.macrolocals = {}
 		self.effects = []
-		if name != '__globals':
+		if not pre:
 			self.argcount = len(self.wordtypes[name][0])+1
 			argtypes = self.wordtypes[name][0]
 			self.argtypes = dict(('arg_%i' % i, type) for i, type in enumerate(argtypes))
@@ -435,7 +454,7 @@ class Compiler(object):
 		if len(self.rstack) == 1:
 			self.effects.append(('return', self.rstack.pop()))
 
-		return self.locals, self.effects
+		return self.locals, self.effects, self.localorder
 
 	def block(self):
 		depth = 1
@@ -500,10 +519,13 @@ class Compiler(object):
 		if isinstance(self.rstack.top(), Type):
 			type = self.rstack.pop()
 			self.locals[name] = type
+			if name not in self.localorder:
+				self.localorder.append(name)
 		else:
 			elem = self.rstack.pop()
 			if name not in self.locals and name not in self.globals:
 				self.locals[name] = Type(self.infertype(elem))
+				self.localorder.append(name)
 			self.effects.append(('=', ('var', name), elem))
 
 	def map(self, name):
