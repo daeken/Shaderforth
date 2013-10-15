@@ -143,6 +143,7 @@ for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
 	def __init__(self, code, shadertoy=False):
+		self.code = code
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		Compiler.instance = self
@@ -215,6 +216,12 @@ class Compiler(object):
 				return '(%s) ? (%s) : (%s)' % (c, a, b)
 			else:
 				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
+
+		if self.shadertoy:
+			print '/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth'
+			print self.code.rstrip('\n')
+			print '*/'
+			print
 
 		for name, elems in self.structs.items():
 			print 'struct %s {' % name
@@ -359,12 +366,14 @@ class Compiler(object):
 		self.globals.update(locals)
 		assert len(effects) == 0
 
+		def subword(name):
+			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()))
 		sdefs = {}
 		for name, atoms in structs.items():
 			locals, effects, localorder = self.compile('__' + name, atoms, pre=True)
 			assert len(effects) == 0
 			sdefs[name] = [(ename, locals[ename]) for ename in localorder]
-			word(name)(lambda self: self.rstack.push(tuple([name] + self.rstack.pop())))
+			word(name)(subword(name))
 			gltypes[name] = name
 
 		return words, wordtypes, macros, sdefs
@@ -571,7 +580,10 @@ class Compiler(object):
 			elif expr[0] == 'arg':
 				return self.argtypes[expr[1]]
 			elif expr[0][0] == '.':
-				if len(expr[0]) == 2:
+				subtype = self.infertype(expr[1])
+				if subtype in self.structs:
+					return str(dict(self.structs[subtype])[expr[0][1:]])
+				elif len(expr[0]) == 2:
 					return 'float'
 				else:
 					return 'vec%i' % (len(expr[0])-1)
@@ -802,6 +814,19 @@ class Compiler(object):
 	def or_(self):
 		b, a = self.rstack.pop(), self.rstack.pop()
 		self.rstack.push(('||', a, b))
+
+	@word('choose')
+	def choose(self):
+		val = self.rstack.pop()
+		arr = self.rstack.pop()
+
+		cur = arr.pop()
+		while len(arr):
+			left = arr.pop()
+			comp = arr.pop()
+			cur = ('?:', ('==', val, comp), left, cur)
+
+		self.rstack.push(cur)
 
 def main(fn, shadertoy=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
