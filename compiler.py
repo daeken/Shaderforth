@@ -40,6 +40,9 @@ class Type(object):
 	def __repr__(self):
 		return ' '.join(self.attributes) + (' ' if self.attributes else '') + self.name
 
+	def rename(self):
+		return ' '.join(self.attributes) + (' ' if self.attributes else '') + Compiler.instance.rename(self.name)
+
 class Stack(object):
 	def __init__(self):
 		self.list = []
@@ -146,6 +149,7 @@ gltypes = dict(
 	mat4='mat4', 
 	float='float', 
 )
+btypes = 'void int bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
@@ -158,6 +162,8 @@ class Compiler(object):
 			gl_FragCoord=Type('vec4'), 
 			gl_FragColor=Type('vec4'), 
 		)
+		self.renamed = {}
+		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(code)
 
 		for name, atoms in self.words.items():
@@ -166,14 +172,11 @@ class Compiler(object):
 		self.output()
 
 	def output(self):
-		def rename(name):
-			return name.replace('-', '_')
-
 		for name, type in self.globals.items():
 			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
 				continue
 
-			print type, rename(name) + ';'
+			print self.rename(str(type)), self.rename(name) + ';'
 
 		indentlevel = [1]
 		def structure(atom):
@@ -188,20 +191,24 @@ class Compiler(object):
 			elif atom[0] == '=':
 				return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
-				return '(%s)%s' % (structure(atom[1]), atom[0])
+				swizzle = atom[0]
+				if atom[2]:
+					swizzle = '.' + self.rename(atom[0][1:])
+				return '(%s)%s' % (structure(atom[1]), swizzle)
 			elif atom[0] == 'var':
 				if atom[1].startswith('gl_') or atom[1] in self.globals or atom[1] in defd:
-					return rename(atom[1])
+					return self.rename(atom[1])
 				else:
 					defd.append(atom[1])
-					return '%r %s' % (locals[atom[1]], rename(atom[1]))
+					return '%s %s' % (locals[atom[1]].rename(), self.rename(atom[1]))
 			elif atom[0] == 'arg':
-				return atom[1]
+				return self.rename(atom[1])
 			elif atom[0] == 'return':
 				return 'return %s' % structure(atom[1])
 			elif atom[0] == 'for':
 				_, name, start, top = atom
 				defd.append(name)
+				name = self.rename(name)
 				indentlevel[0] += 1
 				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name), True
 			elif atom[0] == 'if':
@@ -222,7 +229,7 @@ class Compiler(object):
 				c, a, b = map(structure, atom[1:])
 				return '(%s) ? (%s) : (%s)' % (c, a, b)
 			else:
-				return '%s(%s)' % (rename(atom[0]), ', '.join(map(structure, atom[1:])))
+				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
 		if self.shadertoy:
 			print '/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth'
@@ -231,17 +238,17 @@ class Compiler(object):
 			print
 
 		for name, elems in self.structs.items():
-			print 'struct %s {' % name
+			print 'struct %s {' % self.rename(name)
 			for name, type in elems:
-				print '\t%s %s;' % (type, name)
+				print '\t%s %s;' % (type.rename(), self.rename(name))
 			print '};'
 		for name in self.words:
 			if name != 'main':
-				print '%s %s(%s);' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
+				print '%s %s(%s);' % (self.rename(self.wordtypes[name][1]), self.rename(name), ', '.join(self.rename(type) for type in self.wordtypes[name][0]))
 		for name, (locals, effects, localorder) in self.words.items():
 			defd = []
 
-			print '%s %s(%s) {' % (self.wordtypes[name][1], rename(name), ', '.join('%s arg_%i' % (type, i) for i, type in enumerate(self.wordtypes[name][0])))
+			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename('arg_%i' % i)) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -257,6 +264,26 @@ class Compiler(object):
 				else:
 					print '\t' * indentlevel[0] + line + ';'
 			print '}'
+
+	def rename(self, name):
+		if name in glfuncs or name in btypes or name.startswith('gl_'):
+			return name
+		elif name in self.globals and ('uniform' in self.globals[name].attributes or 'varying' in self.globals[name].attributes):
+			return name
+		elif name in self.renamed:
+			return self.renamed[name]
+		else:
+			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+			rest = first + '0123456789'
+			ti = self.rename_i
+			sname = first[ti % len(first)]
+			ti /= len(first)
+			while ti > 0:
+				sname += rest[ti % len(rest)]
+				ti /= len(rest)
+			self.renamed[name] = sname
+			self.rename_i += 1
+			return sname
 
 	def parsewords(self, code):
 		def sanitize(name, macro):
@@ -430,8 +457,9 @@ class Compiler(object):
 				self.assign(token[1:])
 			elif len(token) > 1 and token[0] == '.':
 				elem = self.rstack.pop()
+				is_struct = self.infertype(elem) in self.structs
 				for swizzle in token[1:].split('.'):
-					self.rstack.push(('.' + swizzle, elem))
+					self.rstack.push(('.' + swizzle, elem, is_struct))
 			elif len(token) > 1 and token[0] == '/':
 				if token == '/{':
 					self.map(self.block())
