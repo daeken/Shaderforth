@@ -26,6 +26,7 @@
 	d .x.y.z max max 0.0 min
 	d 0.0 max length +
 ;
+:m plane ( p n ) p n .xyz dot n .w + ;
 
 :m union \min ;
 :m matunion \{ ( $a $b ) a b a .distance b .distance < select } ;
@@ -52,13 +53,15 @@
 	@int =material
 ;
 
+:m trotate [ 0.4 1.1 1.7 ]v time rotate ;
+
 : scene ( p:vec3 -> hit )
 	p 5.0 tz =p
 
 	[
-		[ p [ time sin 2.0 * -0.3 3.0 ]v + [ 0.5 0.6 0.5 ]v box 0 ] hit
-		[ p [ 0.2 0.5 0.4 ]v + [ 1.0 0.5 0.2 ]v iGlobalTime rotate [ 0.5 0.2 ]v torus 1 ] hit
-		[ p [ time sin time 0.5 * cos time 1.7 * sin ]v + 0.4 sphere 2 ] hit
+		[ p [ time sin 1.8 * 0.0 3.0 ]v + [ 2.0 2.0 0.1 ]v box 0 ] hit
+		[ p trotate [ 0.2 0.5 0.4 ]v + [ 0.5 0.2 ]v torus 1 ] hit
+		[ p trotate [ 0.2 0.5 0.4 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
 	] matunion
 ;
 
@@ -73,7 +76,7 @@
 
 : get-material ( id:int -> material )
 	[
-		0 [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 0.001 0.0 ] material
+		0 [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 -1.0 0.0 ] material
 		1 [ [ 1.0 0.0 0.0 ]v 0.2 0.8 30.0 0.9 0.0 ] material
 		2 [ [ 0.0 1.0 0.0 ]v 0.2 0.7 30.0 1.0 0.0 ] material
 		  [ [ 0.0 0.0 1.0 ]v 0.1 0.7 40.0 1.2 0.0 ] material
@@ -157,7 +160,7 @@ cp =ray
 			0.0 =dist
 		} {
 			break
-		} mat .reflection 0.0 > if
+		} mat .reflection 0.0 != if
 	} {
 		break
 	} dist far < if
