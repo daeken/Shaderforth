@@ -1,6 +1,7 @@
 :globals
 	@vec3 uniform =iResolution
 	@float uniform =iGlobalTime
+	@vec3 uniform =iMouse
 ;
 
 : rotationmat ( axis:vec3 angle:float -> mat4 )
@@ -16,6 +17,10 @@
 		0.0                                  , 0.0                                  , 0.0                                  , 1.0
 	]m
 ;
+
+:m res-scale iResolution .xy / 0.5 - 2.0 * [ 1.0 iResolution .y.x / ]v * ;
+:m mousepos iMouse .xy res-scale negate ;
+:m clickpos iMouse .zw res-scale negate ;
 
 :m rotate ( p axis angle ) [ p 1.0 ]v axis angle rotationmat * .xyz ;
 
@@ -39,14 +44,6 @@
 :m tx ( p t ) p [ t   0.0 0.0 ]v + ;
 :m ty ( p t ) p [ 0.0 t   0.0 ]v + ;
 :m tz ( p t ) p [ 0.0 0.0 t   ]v + ;
-
-: wobble ( p:vec3 -> vec3 )
-	[
-		p .y 7.0 * time 0.3 * + sin 0.05 *
-		p .y 5.0 * time 1.7 * + sin 0.05 *
-		p .y 9.0 * time + cos 0.05 *
-	]v p +
-;
 
 :struct hit
 	@float =distance
@@ -123,11 +120,10 @@ cp =ray
 
 	{
 		ray scene =cur
-		dist cur .distance + =dist
+		dist cur .distance + far min =dist
 		ray dir cur .distance * + =ray
 
 		{ break } cur .distance 0.01 < when
-		{ far =dist } dist far > when
 	} 50 times
 
 	{
@@ -136,27 +132,25 @@ cp =ray
 		[ 0.0 8.0 0.0 ]v =>lightpos
 		[ 1.0 1.0 1.0 ]v =>lightcolor
 		lightpos ray - normalize =ivec
-		ivec normal dot =incidence
-		{ 0.0 =incidence } incidence 0.0 < when
+		ivec normal dot 0.0 max =incidence
 		lightcolor incidence * =>diffuse
 		0.1 =>ambient
 
 		cur .material get-material =mat
 
 		0.0 =specular
-		lightpos ray - normalize =>lightdir
 		{
-			lightdir cp + normalize normal dot
+			ivec cp + normalize normal dot
 			0.0 max mat .specular pow
 			lightpos ray - length / =specular
-		} mat .specular 0.0 != normal lightdir dot 0.0 >= and when
+		} mat .specular 0.0 != incidence 0.0 > and when
 
 		c mat .color diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * + =c
 
 		{
 			dir normal reflect normalize =dir
-			ray dir + =ray
 			ray =cp
+			ray dir + =ray
 			0.0 =dist
 		} {
 			break
