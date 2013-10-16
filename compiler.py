@@ -1,4 +1,5 @@
-import re
+import re, sys
+from cStringIO import StringIO
 
 def regex(pattern, flags=0):
 	def sub(text):
@@ -153,7 +154,7 @@ btypes = 'void int bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bv
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
-	def __init__(self, code, shadertoy=False):
+	def __init__(self, code, shadertoy=False, minimize=False):
 		self.code = code
 		self.tempi = 0
 		self.shadertoy = shadertoy
@@ -169,7 +170,27 @@ class Compiler(object):
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
 
+		old = sys.stdout
+		sys.stdout = StringIO()
 		self.output()
+		code = sys.stdout.getvalue()
+		sys.stdout = old
+		if minimize:
+			print self.minimize(code)
+		else:
+			print code.rstrip('\n')
+
+	def minimize(self, code):
+		code = re.sub(r'//.*$', '', code)
+		code = code.replace('\n', ' ').replace('\t', ' ')
+		code = re.sub(r' +', ' ', code)
+		code = re.sub(r'/\*.*?\*/', '', code)
+		code = re.sub(r' +', ' ', code)
+		code = re.sub(r'\.0+([^0-9])', r'.\1', code)
+		code = re.sub(r'0+([1-9]+\.[^a-z_])', r'\1', code, re.I)
+		code = re.sub(r'0+([1-9]*\.[0-9])', r'\1', code)
+		code = re.sub(r'\s*(;|{|}|\(|\)|=|\+|-|\*|\/|\[|\]|,|\.|%|!|~|\?|:|<|>)\s*', r'\1', code)
+		return code.strip()
 
 	def output(self):
 		for name, type in self.globals.items():
@@ -918,9 +939,8 @@ class Compiler(object):
 		elem = self.rstack.retrieve(pos, remove=True)
 		self.rstack.push(elem)
 
-def main(fn, shadertoy=None):
-	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy')
+def main(fn, shadertoy=None, minimize=None):
+	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
 
 if __name__=='__main__':
-	import sys
 	main(*sys.argv[1:])
