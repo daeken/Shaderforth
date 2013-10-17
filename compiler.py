@@ -158,6 +158,7 @@ class Compiler(object):
 		self.code = code
 		self.tempi = 0
 		self.shadertoy = shadertoy
+		self.minimize = minimize
 		Compiler.instance = self
 		self.globals = dict(
 			gl_FragCoord=Type('vec4'), 
@@ -176,11 +177,11 @@ class Compiler(object):
 		code = sys.stdout.getvalue()
 		sys.stdout = old
 		if minimize:
-			print self.minimize(code)
+			print self.minshader(code)
 		else:
 			print code.rstrip('\n')
 
-	def minimize(self, code):
+	def minshader(self, code):
 		code = re.sub(r'//.*$', '', code)
 		code = code.replace('\n', ' ').replace('\t', ' ')
 		code = re.sub(r' +', ' ', code)
@@ -298,9 +299,9 @@ class Compiler(object):
 			if name != 'main':
 				print '%s %s(%s);' % (self.rename(self.wordtypes[name][1]), self.rename(name), ', '.join(self.rename(type) for type in self.wordtypes[name][0]))
 		for name, (locals, effects, localorder) in self.words.items():
-			defd = []
+			defd = self.wordtypes[name][2]
 
-			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename('arg_%i' % i)) for i, type in enumerate(self.wordtypes[name][0])))
+			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -324,6 +325,9 @@ class Compiler(object):
 			return name
 		elif name in self.renamed:
 			return self.renamed[name]
+		elif not self.minimize:
+			self.renamed[name] = name = name.replace('-', '_')
+			return name
 		else:
 			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 			rest = first + '0123456789'
@@ -362,7 +366,7 @@ class Compiler(object):
 		parseloc = 0
 		words, macros = {'main': []}, {}
 		macrospec = {}
-		wordtypes = {'main' : ((), 'void')}
+		wordtypes = {'main' : ((), 'void', [])}
 		globals = []
 		structs = {}
 
@@ -394,7 +398,7 @@ class Compiler(object):
 
 				argstart = parsed.consume()
 				if argstart == '()':
-					wordtypes[name] = (), 'void'
+					wordtypes[name] = (), 'void', []
 				else:
 					assert argstart == '('
 					args = []
@@ -413,11 +417,10 @@ class Compiler(object):
 								args.append(token[1])
 								argnames.append(token[0])
 					parsed.consume()
-					wordtypes[name] = tuple(args), ret
 					assert len([_ for _ in argnames if _ != None]) == 0 or None not in argnames
-					if None not in argnames:
-						for name in argnames[::-1]:
-							cur.append('=>' + name)
+					if None in argnames:
+						argnames = ['arg_%i' % i for i in xrange(argnames)]
+					wordtypes[name] = tuple(args), ret, argnames
 			elif token == ':m':
 				modstack.append(cur)
 				name = parsed.consume()
@@ -483,7 +486,10 @@ class Compiler(object):
 		if not pre:
 			self.argcount = len(self.wordtypes[name][0])+1
 			argtypes = self.wordtypes[name][0]
-			self.argtypes = dict(('arg_%i' % i, type) for i, type in enumerate(argtypes))
+			self.argnames = self.wordtypes[name][2]
+			self.argtypes = dict((self.argnames[i], type) for i, type in enumerate(argtypes))
+			for name, type in self.argtypes.items():
+				self.locals[name] = Type(type)
 
 		while self.atoms.peek() != None:
 			token = self.atoms.consume()
@@ -553,6 +559,7 @@ class Compiler(object):
 				self.rstack.push(self.block())
 			else:
 				print 'unknown token', token
+				sys.exit()
 
 		assert len(self.rstack) <= 1
 		if len(self.rstack) == 1:
@@ -627,7 +634,7 @@ class Compiler(object):
 	def argument(self):
 		assert self.argcount > 0
 		self.argcount -= 1
-		return ('arg', 'arg_%i' % (self.argcount-1))
+		return ('arg', self.argnames[self.argcount-1])
 
 	def assign(self, name):
 		if isinstance(self.rstack.top(), Type):
