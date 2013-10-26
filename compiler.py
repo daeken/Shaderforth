@@ -34,15 +34,19 @@ class Type(object):
 	def __init__(self, name):
 		self.name = name
 		self.attributes = []
+		self.array_count = None
 
 	def attribute(self, name):
 		self.attributes.append(name)
 
+	def array(self, count):
+		self.array_count = count
+
 	def __repr__(self):
-		return ' '.join(self.attributes) + (' ' if self.attributes else '') + self.name
+		return ' '.join(self.attributes) + (' ' if self.attributes else '') + self.name + ('' if self.array_count is None else '[%i]' % self.array_count)
 
 	def rename(self):
-		return ' '.join(self.attributes) + (' ' if self.attributes else '') + Compiler.instance.rename(self.name)
+		return ' '.join(self.attributes) + (' ' if self.attributes else '') + Compiler.instance.rename(self.name) + ('' if self.array_count is None else '[%i]' % self.array_count)
 
 class Stack(object):
 	def __init__(self):
@@ -136,8 +140,10 @@ glfuncs = dict(
 	mat2=4, 
 	mat3=9, 
 	mat4=16, 
-	float=1, 
 	reflect=2, 
+	refract=3, 
+	int=1, 
+	clamp=3,
 )
 gltypes = dict(
 	dot='float', 
@@ -149,6 +155,7 @@ gltypes = dict(
 	mat3='mat3', 
 	mat4='mat4', 
 	float='float', 
+	int='int',
 )
 btypes = 'void int bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
 for name, consumes in glfuncs.items():
@@ -194,12 +201,6 @@ class Compiler(object):
 		return code.strip()
 
 	def output(self):
-		for name, type in self.globals.items():
-			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
-				continue
-
-			print self.rename(str(type)), self.rename(name) + ';'
-
 		indentlevel = [1]
 		operators = '+ - / * < > <= >= == != && ||'.split(' ')
 		precedence = {
@@ -217,12 +218,13 @@ class Compiler(object):
 			'&&' : 4, 
 			'.'  : 10, 
 			'?:' : 10, 
+			'[]' : 10,
 		}
 		def paren(atom, op=None):
 			if not isinstance(atom, tuple):
 				return unicode(atom)
 
-			wrap = False
+			wrap = True#False # XXX: Detect subtraction/division side-by-side precedence
 			if atom[0] in operators:
 				wrap = precedence[atom[0]] < precedence[op]
 			elif atom[0] == '?:':
@@ -242,7 +244,10 @@ class Compiler(object):
 				else:
 					return '%s %s %s' % (paren(atom[1], atom[0]), atom[0], paren(atom[2], atom[0]))
 			elif atom[0] == '=':
-				return '%s = %s' % (structure(atom[1]), structure(atom[2]))
+				if atom[2] is None:
+					return '%s' % structure(atom[1])
+				else:
+					return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
 				if atom[2]:
@@ -281,6 +286,8 @@ class Compiler(object):
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
 				return '%s ? %s : %s' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
+			elif atom[0] == '[]':
+				return '%s[%s]' % (paren(atom[1], '[]'), structure(atom[2]))
 			else:
 				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -295,6 +302,11 @@ class Compiler(object):
 			for name, type in elems:
 				print '\t%s %s;' % (type.rename(), self.rename(name))
 			print '};'
+		for name, type in self.globals.items():
+			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
+				continue
+
+			print type.rename(), self.rename(name) + ';'
 		for name in self.words:
 			if name != 'main':
 				print '%s %s(%s);' % (self.rename(self.wordtypes[name][1]), self.rename(name), ', '.join(self.rename(type) for type in self.wordtypes[name][0]))
@@ -358,7 +370,7 @@ class Compiler(object):
 			for i, elem in enumerate(macro):
 				if elem in spec:
 					macro[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*' and elem[1:] in spec:
 					macro[i] = '*macro_' + name + '_' + elem[1:]
 			macros[name] = preamble + macro
 
@@ -461,14 +473,12 @@ class Compiler(object):
 
 		locals, effects, localorder = self.compile('__globals', globals, pre=True)
 		self.globals.update(locals)
-		assert len(effects) == 0
 
 		def subword(name):
 			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()))
 		sdefs = {}
 		for name, atoms in structs.items():
 			locals, effects, localorder = self.compile('__' + name, atoms, pre=True)
-			assert len(effects) == 0
 			sdefs[name] = [(ename, locals[ename]) for ename in localorder]
 			word(name)(subword(name))
 			gltypes[name] = name
@@ -513,6 +523,10 @@ class Compiler(object):
 				self.macroassign(token[2:])
 			elif len(token) > 1 and token[0] == '=':
 				self.assign(token[1:])
+			elif token == '=':
+				var = self.rstack.pop()
+				value = self.rstack.pop()
+				self.effects.append(('=', var, value))
 			elif len(token) > 1 and token[0] == '.':
 				elem = self.rstack.pop()
 				is_struct = self.infertype(elem) in self.structs
@@ -610,7 +624,7 @@ class Compiler(object):
 			for i, elem in enumerate(atoms):
 				if elem in spec:
 					atoms[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*':
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*' and elem[1:] in spec:
 					atoms[i] = '*macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
@@ -642,6 +656,7 @@ class Compiler(object):
 			self.locals[name] = type
 			if name not in self.localorder:
 				self.localorder.append(name)
+			self.effects.append(('=', ('var', name), None))
 		else:
 			elem = self.rstack.pop()
 			if name not in self.locals and name not in self.globals:
@@ -705,6 +720,8 @@ class Compiler(object):
 				return gltypes[expr[0]]
 			elif expr[0] in self.words:
 				return self.wordtypes[expr[0]][1]
+			elif expr[0] == '[]':
+				return self.infertype(expr[1])
 			else:
 				types = map(self.infertype, expr[1:])
 				mat = vec = other = None
@@ -716,6 +733,8 @@ class Compiler(object):
 					else:
 						other = type
 				return vec or mat or other
+		elif isinstance(expr, int):
+			return 'int'
 		else:
 			return 'float'
 		assert False
@@ -945,6 +964,35 @@ class Compiler(object):
 		pos = self.rstack.pop()
 		elem = self.rstack.retrieve(pos, remove=True)
 		self.rstack.push(elem)
+
+	@word('array')
+	def array(self):
+		count = self.rstack.pop()
+		type = self.rstack.top()
+		type.array(count)
+
+	@word('[]')
+	def index(self):
+		index = self.rstack.pop()
+		arr = self.rstack.pop()
+		self.rstack.push(('[]', arr, index))
+
+	@word('size')
+	def size(self):
+		self.rstack.push(len(self.rstack.pop()))
+
+	@word('sq')
+	def sq(self):
+		x = self.rstack.pop()
+		self.rstack.push(('*', x, x))
+
+	@word('float')
+	def float(self):
+		val = self.rstack.pop()
+		if isinstance(val, float) or isinstance(val, int):
+			self.rstack.push(float(val))
+		else:
+			self.rstack.push(('float', val))
 
 def main(fn, shadertoy=None, minimize=None):
 	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
