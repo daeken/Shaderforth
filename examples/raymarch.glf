@@ -50,20 +50,31 @@
 	@int =material
 ;
 
+:struct marched
+	@float =distance
+	@float =obj-distance
+	@vec3 =origin
+	@vec3 =pos
+	@int =material
+	@vec3 =color
+;
+
+:m clamp-01 0.0 1.0 clamp ;
+
 :m trotate [ 0.4 1.1 1.7 ]v time rotate ;
 
 : scene ( p:vec3 -> hit )
 	p 5.0 tz =p
 
 	[
-		[ p [ time sin 1.8 * 0.0 3.0 ]v + [ 2.0 2.0 0.1 ]v box 0 ] hit
-		[ p trotate [ 0.2 0.5 0.4 ]v + [ 0.5 0.2 ]v torus 1 ] hit
-		[ p trotate [ 0.2 0.5 0.4 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
+		[ p trotate [ 0.2 0.5 0.6 ]v + [ 0.5 0.2 ]v torus 1 ] hit
+		[ p trotate [ 0.2 0.5 0.6 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
+		[ p -5.0 tz trotate [ 0.3 0.3 0.3 ]v box 3 ] hit
 	] hitunion
 ;
 
 :struct material
-	@vec3 =color
+	@vec4 =color
 	@float =ambient
 	@float =diffuse
 	@float =specular
@@ -73,14 +84,15 @@
 
 : get-material ( id:int -> material )
 	[
-		0 [ [ 1.0 1.0 1.0 ]v 0.0 0.3 10.0 -1.0 0.0 ] material
-		1 [ [ 1.0 0.0 0.0 ]v 0.2 0.8 30.0 0.9 0.0 ] material
-		2 [ [ 0.0 1.0 0.0 ]v 0.2 0.7 30.0 1.0 0.0 ] material
-		  [ [ 0.0 0.0 1.0 ]v 0.1 0.7 40.0 1.2 0.0 ] material
+		0 [ [ 1.0 1.0 1.0 1.0 ]v 0.0 1.0 500.0 0.01 2.419  ] material
+		1 [ [ 1.0 0.0 0.0 0.8 ]v 0.2 0.8 30.0 0.9 1.333 ] material
+		2 [ [ 0.0 1.0 0.0 1.0 ]v 0.4 0.6 30.0 1.0 0.0   ] material
+		3 [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 2.419 ] material
+		  [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 5.0   ] material
 	] id choose
 ;
 
-0.0001 =>eps
+:m eps 0.0001 ;
 
 :m getnormal ( p )
 	[
@@ -96,68 +108,143 @@
 gl_FragCoord .xy 2.0 * iResolution .xy - iResolution .y / =pos
 
 3.0 =>focus
-20.0 =>far
+:m far 20.0 ;
+:m close 0.01 ;
 
-[ 0.0 0.0 5.0 ]v =cp
+[ 0.0 0.0 5.0 ]v =origin
 [ 0.0 0.0 0.0 ]v =>ct
 
-ct cp - normalize =>cd
+ct origin - normalize =>cd
 [ 0.0 0.5 0.0 ]v =cu
 cd cu cross =>cs
 cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
-cp =ray
-0.0 =dist
-
-[ 0.0 0.0 ]v =s
 [ 0.0 0.0 0.0 ]v =c
 
-[ far -1 ] hit =cur
+: shade ( cur:marched normal:vec3 level:float -> vec4 )
+	cur .pos =>ray
 
-10 =>iters
-{
-	float iters float / 1.0 swap - =level
+	[ 0.0 8.0 0.0 ]v =>lightpos
+	[ 1.0 1.0 1.0 ]v =>lightcolor
+	lightpos ray - normalize =ivec
+	ivec normal dot 0.0 max =incidence
+	lightcolor incidence * =>diffuse
+	0.1 =>ambient
 
+	cur .material get-material =mat
+
+	0.0 =specular
+	{
+		ivec cur .origin + normalize normal dot
+		0.0 max mat .specular pow
+		lightpos ray - length / =specular
+	} mat .specular 0.0 != incidence 0.0 > and when
+
+	[ mat .color .rgb.a * diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * mat .reflection ]v
+;
+
+: skip-bulk ( ray:vec3 dir:vec3 mat:int -> vec3 )
+	{
+		ray scene =cur
+		ray dir cur .distance 0.025 max * + =ray
+		{ break } cur .distance 0.01 > cur .material mat != or when
+	} 100 times
+	ray
+;
+
+: march ( ray:vec3 dir:vec3 -> marched )
+	ray =origin
+	@hit =cur
+	0.0 =dist
+	[ 0.0 0.0 0.0 ]v =color
+	1.0 =trans
 	{
 		ray scene =cur
 		dist cur .distance + far min =dist
 		ray dir cur .distance * + =ray
 
-		{ break } cur .distance 0.01 < when
-	} 50 times
-
-	{
-		ray getnormal =normal
-
-		[ 0.0 8.0 0.0 ]v =>lightpos
-		[ 1.0 1.0 1.0 ]v =>lightcolor
-		lightpos ray - normalize =ivec
-		ivec normal dot 0.0 max =incidence
-		lightcolor incidence * =>diffuse
-		0.1 =>ambient
+		{ break } dist far >= when
 
 		cur .material get-material =mat
-
-		0.0 =specular
 		{
-			ivec cp + normalize normal dot
-			0.0 max mat .specular pow
-			lightpos ray - length / =specular
-		} mat .specular 0.0 != incidence 0.0 > and when
+			{ break }
+			{
+				ray getnormal =normal
+				{
+					dir normal reflect normalize =rdir
+					ray dir cur .distance * + =rorigin
+					rorigin dir march-one color + =color
+				} mat .reflection 0.0 > when
+				[ dist cur .distance origin ray cur .material color ] marched =>cm
+				cm normal 1.0 shade =>shaded
+				shaded .rgb trans * color + =color
+				mat .color .a trans * =trans
+				dir normal 1.0 mat .refraction / refract =dir
+				ray dir cur .material skip-bulk =ray
+				dir normal mat .refraction refract =dir
+			} mat .refraction 0.0 == if
+		} cur .distance close < when
+	} 50 times
+	[
+		dist far cur .distance close < select
+		cur .distance
+		origin
+		ray
+		cur .material
+		color
+	] marched
+;
 
-		c mat .color diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * + =c
+: march-one ( ray:vec3 dir:vec3 -> vec3 )
+	ray =origin
+	@hit =cur
+	0.0 =dist
+	[ 0.0 0.0 0.0 ]v =color
+	{
+		ray scene =cur
+		dist cur .distance + far min =dist
+		ray dir cur .distance * + =ray
+
+		{ break } dist far >= when
+		{ break } cur .distance close < when
+	} 20 times
+	[
+		dist far cur .distance close < select
+		cur .distance
+		origin
+		ray
+		cur .material
+		color
+	] marched =mcur
+	{
+		ray getnormal =normal
+		mcur normal 0.9 shade =shaded
+		shaded .rgb =color
+	} cur .distance far < when
+	color
+;
+
+5 =>iters
+{
+	float iters float / 1.0 swap - =level
+
+	origin dir march =cur
+	c cur .color + =c
+
+	{
+		cur .pos getnormal =normal
+		cur normal level shade =shaded
+		c shaded .rgb + =c
 
 		{
 			dir normal reflect normalize =dir
-			ray =cp
-			ray dir + =ray
-			0.0 =dist
+			cur .pos dir cur .obj-distance * + =origin
 		} {
 			break
-		} mat .reflection 0.0 != if
+		} shaded .w 0.0 != if
 	} {
 		break
-	} dist far < if
+	} cur .distance far < if
 } iters times
 
 [ c 1.0 ]v =gl_FragColor
