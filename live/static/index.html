@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+	<head>
+		<title>Shaderforth Live</title>
+		<script src="static/jquery-1.10.2.min.js"></script>
+		<script src="live.coffee"></script>
+		<script src="compiler-front.coffee"></script>
+	</head>
+	<body>
+		<textarea id="code" cols="80" rows="20">: add-five 5 + ;
+:m macro-add + ;
+
+( some comments go here ( and some nested ones ( too ) !!! ) :3 )
+
+5 6 macro-add add-five =foo</textarea><br>
+		<button id="compile">Compile</button>
+	</body>
+</html>
