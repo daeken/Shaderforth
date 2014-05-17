@@ -172,7 +172,7 @@ for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
 	def __init__(self, code, shadertoy=False, minimize=False):
-		self.code = code
+		self.code = file('utility.glf', 'r').read().decode('utf-8') + code
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -183,7 +183,7 @@ class Compiler(object):
 		)
 		self.renamed = {}
 		self.rename_i = 0
-		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(code)
+		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
@@ -362,7 +362,7 @@ class Compiler(object):
 		elif name in self.renamed:
 			return self.renamed[name]
 		elif not self.minimize:
-			self.renamed[name] = name = name.replace('-', '_')
+			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_')
 			return name
 		else:
 			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
