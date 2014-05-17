@@ -120,12 +120,19 @@ bwords = {
 	'==' : (2, None), 
 	'!=' : (2, None), 
 }
+flatops = {
+	'+' : lambda a, b: a + b, 
+	'-' : lambda a, b: a - b, 
+	'*' : lambda a, b: a * b, 
+	'/' : lambda a, b: a / b, 
+}
 glfuncs = dict(
 	dot=2, 
 	vec4=4, 
 	sin=1, 
 	abs=1, 
 	atan=1, 
+	atan2=2, 
 	cos=1, 
 	pow=2, 
 	sqrt=1, 
@@ -144,6 +151,9 @@ glfuncs = dict(
 	refract=3, 
 	int=1, 
 	clamp=3,
+	smoothstep=3, 
+	ceil=1, 
+	floor=1, 
 )
 gltypes = dict(
 	dot='float', 
@@ -157,7 +167,7 @@ gltypes = dict(
 	float='float', 
 	int='int',
 )
-btypes = 'void int bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
+btypes = 'void int float bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
@@ -184,9 +194,9 @@ class Compiler(object):
 		code = sys.stdout.getvalue()
 		sys.stdout = old
 		if minimize:
-			print self.minshader(code)
+			self.code = self.minshader(code)
 		else:
-			print code.rstrip('\n')
+			self.code = code.rstrip('\n')
 
 	def minshader(self, code):
 		code = re.sub(r'//.*$', '', code)
@@ -222,8 +232,15 @@ class Compiler(object):
 		}
 		def paren(atom, op=None):
 			if not isinstance(atom, tuple):
+				if atom is True:
+					return 'true'
+				elif atom is False:
+					return 'false'
 				return unicode(atom)
 
+			return '(%s)' % structure(atom)
+
+			"""
 			wrap = True#False # XXX: Detect subtraction/division side-by-side precedence
 			if atom[0] in operators:
 				wrap = precedence[atom[0]] < precedence[op]
@@ -234,8 +251,13 @@ class Compiler(object):
 				return '(%s)' % structure(atom)
 			else:
 				return structure(atom)
+			"""
 		def structure(atom):
 			if not isinstance(atom, tuple):
+				if atom is True:
+					return 'true'
+				elif atom is False:
+					return 'false'
 				return unicode(atom)
 
 			if atom[0] in operators:
@@ -332,6 +354,8 @@ class Compiler(object):
 
 	def rename(self, name):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
+			if name == 'atan2':
+				return 'atan'
 			return name
 		elif name in self.globals and ('uniform' in self.globals[name].attributes or 'varying' in self.globals[name].attributes):
 			return name
@@ -510,6 +534,14 @@ class Compiler(object):
 				consumes, fn = bwords[token]
 				if fn != None:
 					fn(self, *[self.atoms.consume() for i in xrange(consumes)][::-1])
+				elif token in flatops:
+					operands = [self.rstack.pop() for i in xrange(consumes)][::-1]
+					
+					if False not in [isinstance(operand, float) for operand in operands] or \
+					   False not in [isinstance(operand, int) for operand in operands]:
+						self.rstack.push(flatops[token](*operands))
+					else:
+						self.rstack.push(tuple([token] + operands))
 				else:
 					self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
 			elif len(token) > 1 and token[0] == '@':
@@ -571,9 +603,14 @@ class Compiler(object):
 				self.amat()
 			elif token == '{':
 				self.rstack.push(self.block())
+			elif token == 'true':
+				self.rstack.push(True)
+			elif token == 'false':
+				self.rstack.push(False)
 			else:
+				print 'foo', token, self.rstack
 				print 'unknown token', token
-				sys.exit()
+				raise Exception('Unknown token')
 
 		assert len(self.rstack) <= 1
 		if len(self.rstack) == 1:
@@ -666,12 +703,12 @@ class Compiler(object):
 
 	def map(self, name):
 		tlist = self.rstack.pop()
-
+		
 		atoms = self.blockify(name)
 		tatoms = []
 		tatoms.append(u'[')
 		for i, val in enumerate(tlist):
-			tname = u'__temp_%i' % i
+			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
 			tatoms += atoms
@@ -680,11 +717,11 @@ class Compiler(object):
 
 	def reduce(self, name):
 		elems = self.rstack.pop()
-		
+
 		atoms = self.blockify(name)
 		tatoms = []
 		for i, val in enumerate(elems):
-			tname = u'__temp_%i' % i
+			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
 			if i != 0:
@@ -733,6 +770,8 @@ class Compiler(object):
 					else:
 						other = type
 				return vec or mat or other
+		elif isinstance(expr, bool):
+			return 'bool'
 		elif isinstance(expr, int):
 			return 'int'
 		else:
@@ -773,10 +812,6 @@ class Compiler(object):
 	def uniform(self):
 		self.rstack.top().attribute('uniform')
 
-	@word('negate')
-	def negate(self):
-		self.rstack.push(('-', self.rstack.pop()))
-
 	@word('(')
 	def nullparen_open(self):
 		self.eatcomment()
@@ -813,6 +848,32 @@ class Compiler(object):
 			assert False
 		self.rstack.push(tuple(['mat%i' % size] + tlist))
 
+	@word('=[')
+	def arrayass(self):
+		names = []
+		while True:
+			token = self.atoms.consume()
+			if token == ']':
+				break
+			names.append(token)
+		arr = self.rstack.pop()
+		for i, name in enumerate(names):
+			self.rstack.push(arr[i])
+			self.assign(name)
+
+	@word('=>[')
+	def arraymass(self):
+		names = []
+		while True:
+			token = self.atoms.consume()
+			if token == ']':
+				break
+			names.append(token)
+		arr = self.rstack.pop()
+		for i, name in enumerate(names):
+			self.rstack.push(arr[i])
+			self.macroassign(name)
+
 	@word('call')
 	def call(self):
 		name = self.rstack.pop()
@@ -843,6 +904,14 @@ class Compiler(object):
 		self.rstack.push(('var', var))
 		self.atoms.insert(list(block) + ['__endblock'])
 		self.locals[var] = Type('int')
+
+	@word('mtimes')
+	def mtimes(self):
+		count = self.rstack.pop()
+		block = self.blockify(self.rstack.pop())
+
+		for i in xrange(count):
+			self.atoms.insert([i] + list(block))
 
 	@word('when')
 	def when(self):
@@ -946,6 +1015,10 @@ class Compiler(object):
 		b, a = self.rstack.pop(), self.rstack.pop()
 		self.rstack.push(('||', a, b))
 
+	@word('not')
+	def not_(self):
+		self.rstack.push(('!', self.rstack.pop()))
+
 	@word('choose')
 	def choose(self):
 		val = self.rstack.pop()
@@ -994,8 +1067,21 @@ class Compiler(object):
 		else:
 			self.rstack.push(('float', val))
 
+	@word('neg')
+	def neg(self):
+		val = self.rstack.pop()
+		if isinstance(val, float) or isinstance(val, int):
+			self.rstack.push(-val)
+		else:
+			self.rstack.push(('-', val))
+
+	@word('drop')
+	def drop(self):
+		self.rstack.pop()
+
 def main(fn, shadertoy=None, minimize=None):
-	Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
+	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
+	print compiler.code
 
 if __name__=='__main__':
 	main(*sys.argv[1:])
