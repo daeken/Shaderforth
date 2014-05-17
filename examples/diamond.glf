@@ -1,7 +1,6 @@
 :globals
 	@vec3 uniform =iResolution
 	@float uniform =iGlobalTime
-	@vec3 uniform =iMouse
 ;
 
 : rotationmat ( axis:vec3 angle:float -> mat4 )
@@ -19,8 +18,6 @@
 ;
 
 :m res-scale iResolution .xy / 0.5 - 2.0 * [ 1.0 iResolution .y.x / ]v * ;
-:m mousepos iMouse .xy res-scale negate ;
-:m clickpos iMouse .zw res-scale negate ;
 
 :m rotate ( p axis angle ) [ p 1.0 ]v axis angle rotationmat * .xyz ;
 
@@ -59,17 +56,30 @@
 	@vec3 =color
 ;
 
-:m clamp-01 0.0 1.0 clamp ;
-
 :m trotate [ 0.4 1.1 1.7 ]v time rotate ;
 
 : scene ( p:vec3 -> hit )
-	p 5.0 tz =p
+	p trotate =p
 
 	[
+		( [ p [ time sin 1.8 * 0.0 3.0 ]v + [ 2.0 2.0 0.1 ]v box 0 ] hit ) ( reflective backplane )
 		[ p trotate [ 0.2 0.5 0.6 ]v + [ 0.5 0.2 ]v torus 1 ] hit
 		[ p trotate [ 0.2 0.5 0.6 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
-		[ p -5.0 tz trotate [ 0.1 0.3 0.3 ]v box 3 ] hit
+		[
+			[
+				[
+					p [ 0.4 0.1 0.1 ]v box
+					p [ 0.1 0.4 0.1 ]v box
+					p [ 0.1 0.1 0.4 ]v box
+				] union
+				p [ 0.3 0.3 0.3 ]v box
+			] subtract
+		3 ] hit
+		[ [
+			p [ 0.5 0.1 0.1 ]v box
+			p [ 0.1 0.5 0.1 ]v box
+			p [ 0.1 0.1 0.5 ]v box
+		] union 4 ] hit
 	] hitunion
 ;
 
@@ -84,10 +94,10 @@
 
 : get-material ( id:int -> material )
 	[
-		0 [ [ 1.0 1.0 1.0 1.0 ]v 0.0 1.0 500.0 0.01 2.419  ] material
+		0 [ [ 1.0 1.0 1.0 1.0 ]v 0.0 0.3 10.0 -1.0 0.0  ] material
 		1 [ [ 1.0 0.0 0.0 0.8 ]v 0.2 0.8 30.0 0.9 1.333 ] material
-		2 [ [ 0.0 1.0 0.0 1.0 ]v 0.4 0.6 30.0 1.0 0.0   ] material
-		3 [ [ 0.9 0.9 1.0 1.0 ]v 0.0 1.0 500.0 1.2 2.419 ] material
+		2 [ [ 1.0 0.0 1.0 1.0 ]v 0.2 0.7 30.0 1.0 0.0   ] material
+		3 [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 2.419 ] material
 		  [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 5.0   ] material
 	] id choose
 ;
