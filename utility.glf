@@ -12,11 +12,14 @@
 :m minmax ( $a $b ) [ a b min a b max ] ;
 
 ( Maths )
-: point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
+: closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
 	point a - =>pa
 	b a - =>ba
 	pa ba dot ba ba dot / 0.0 1.0 clamp =h
-	pa ba h * - length
+	ba h * a +
+;
+: point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
+	point a b point closest-point-line - length
 ;
 :m deg->rad pi 180. / * ;
 :m rad->deg pi 180. / / ;
@@ -36,6 +39,7 @@
 
 : cart->polar ( p:vec2 -> vec2 ) [ p .y.x atan2 p length ]v ;
 : polar->cart ( p:vec2 -> vec2 ) [ p .x cos p .x sin ]v p .y * ;
+: polar-norm ( p:vec2 -> vec2 ) [ p .x tau + tau mod p .y ]v ;
 
 :m p+ ( p v ) p cart->polar v + polar->cart ;
 :m p* ( p v ) p cart->polar v * polar->cart ;
@@ -51,4 +55,10 @@
 		p h .yx + *f  p h .yx - *f -
 	]v 2.0 h .x * / length =>g
 	v abs g /
+;
+
+( Color Operations )
+: hsv->rgb ( hsv:vec3 -> vec3 )
+    hsv .x 60.0 / [ 0. 4. 2. ]v + 6. mod 3. - abs 1. - 0.0 1.0 clamp =>rgb
+    [ 1. 1. 1. ]v rgb hsv .y mix hsv .z *
 ;

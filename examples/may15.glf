@@ -6,43 +6,6 @@
 	@float =time
 ;
 
-:m pi 3.14159 ;
-:m tau pi 2.0 * ;
-
-:m ~= - abs 0.01 <= ;
-:m !~= - abs 0.01 > ;
-
-:m p+ ( p v ) p cart-polar v + polar-cart ;
-:m p* ( p v ) p cart-polar v * polar-cart ;
-
-:m minmax ( $a $b ) [ a b min a b max ] ;
-
-: cart-polar ( p:vec2 -> vec2 ) [ p .y.x atan2 p length ]v ;
-: polar-cart ( p:vec2 -> vec2 ) [ p .x cos p .x sin ]v p .y * ;
-
-: closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
-	point a - =>pa
-	b a - =>ba
-	pa ba dot ba ba dot / 0.0 1.0 clamp =h
-	ba h * a +
-;
-
-:m closest-point-line-polar ( a b point )
-		a cart-polar
-		b cart-polar
-		point cart-polar
-	closest-point-line polar-cart
-;
-
-: point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
-	point a b point closest-point-line - length
-;
-
-: hsv-rgb ( hsv:vec3 -> vec3 )
-    hsv .x 60.0 / [ 0. 4. 2. ]v + 6. mod 3. - abs 1. - 0.0 1.0 clamp =>rgb
-    [ 1. 1. 1. ]v rgb hsv .y mix hsv .z *
-;
-
 : derive-pos ( p:vec2 v:vec2 a:vec2 t:float -> vec2 )
 	p v t * +
 	a 2. / t t * * +
@@ -102,7 +65,7 @@
 			[
 				i float ai * ltime +
 				0.4 ltime 2179. * i 1 + float 2287.0 * ltime + sin 100.0 * + sin 0.03 * +
-			]v polar-cart
+			]v polar->cart
 			ltime 571.0 * sin 0.5 * 3.0 +
 			color
 			0.03
@@ -158,7 +121,7 @@ gl_FragCoord .xy iResolution .xy / dup =np 2.0 * 1.0 - 1.5 * [ 1.0 iResolution .
 					it 197. * 360. mod
 					it 2267. * sin abs
 					0.8
-				]v hsv-rgb
+				]v hsv->rgb
 			firework
 		} it 1493. * sin 0.95 > it 0.0 >= and when
 	} steps buffertime * int times
