@@ -203,7 +203,9 @@ class Compiler(object):
 			for dep in required:
 				if dep in checked:
 					continue
-				required += self.deps[dep]
+				for elem in self.deps[dep]:
+					if elem not in required:
+						required.append(elem)
 				checked.append(dep)
 		dead = [name for name in self.words if name not in required]
 		for name in dead:
