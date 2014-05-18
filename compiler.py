@@ -184,9 +184,30 @@ class Compiler(object):
 		self.renamed = {}
 		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
+		self.deps = {}
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
+			self.deps[name] = deps = []
+			for atom in atoms:
+				if not isinstance(atom, unicode):
+					continue
+				if atom[0] in '&\\/':
+					atom = atom[1:]
+				if atom in self.words and atom not in deps:
+					deps.append(atom)
+
+		required = ['main']
+		checked = []
+		while len(checked) < len(required):
+			for dep in required:
+				if dep in checked:
+					continue
+				required += self.deps[dep]
+				checked.append(dep)
+		dead = [name for name in self.words if name not in required]
+		for name in dead:
+			del self.words[name]
 
 		old = sys.stdout
 		sys.stdout = StringIO()
