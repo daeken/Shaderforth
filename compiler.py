@@ -265,19 +265,6 @@ class Compiler(object):
 				return unicode(atom)
 
 			return '(%s)' % structure(atom)
-
-			"""
-			wrap = True#False # XXX: Detect subtraction/division side-by-side precedence
-			if atom[0] in operators:
-				wrap = precedence[atom[0]] < precedence[op]
-			elif atom[0] == '?:':
-				wrap = True
-
-			if wrap:
-				return '(%s)' % structure(atom)
-			else:
-				return structure(atom)
-			"""
 		def structure(atom):
 			if not isinstance(atom, tuple):
 				if atom is True:
@@ -371,6 +358,7 @@ class Compiler(object):
 		for name in wordorder:
 			locals, effects, localorder = self.words[name]
 			defd = self.wordtypes[name][2]
+			effects = self.predeclare(effects)
 
 			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
@@ -388,6 +376,34 @@ class Compiler(object):
 				else:
 					print '\t' * indentlevel[0] + line + ';'
 			print '}'
+
+	def predeclare(self, effects):
+		def vars_referenced(effect):
+			if not isinstance(effect, tuple) and not isinstance(effect, list):
+				return []
+			if effect[0] == 'var':
+				return [effect[1]]
+			return reduce(lambda a, b: a + b, map(vars_referenced, effect))
+
+		declared = list(self.globals.keys())
+		need = []
+		decls = [[]]
+		inside = []
+		for effect in effects:
+			if effect[0] in ('if', 'while'):
+				decls.append([])
+			elif effect[0] in ('else', 'elif'):
+				inside += decls.pop()
+				decls.append([])
+			elif effect[0] == 'endblock':
+				inside += decls.pop()
+			elif effect[0] == '=' and effect[1][0] == 'var':
+				decls[-1].append(effect[1][1])
+			refs = vars_referenced(effect)
+			for ref in refs:
+				if ref in inside and ref not in need:
+					need.append(ref)
+		return [('=', ('var', var), None) for var in need] + effects
 
 	def rename(self, name):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
@@ -674,7 +690,7 @@ class Compiler(object):
 					break
 
 		atoms = atoms[:-1]
-		if atoms[0] == '(':
+		if len(atoms) and atoms[0] == '(':
 			spec = []
 			stored = []
 			for atom in atoms[1:]:
@@ -1000,12 +1016,20 @@ class Compiler(object):
 
 	@word('__else')
 	def else_(self):
+		ass = []
+		expand = []
+		while True:
+			if self.rstack.top() == '__term__':
+				self.rstack.pop()
+				break
+			var = self.tempname()
+			ass.append('=' + var)
+			expand = [var] + expand
+			self.assign(var)
 		self.effects.append(('else', ))
-		while self.rstack.pop() != '__term__':
-			pass
 		else_ = self.rstack.pop()
 		self.rstack.push('__term__')
-		self.atoms.insert(list(else_) + ['__endblock'])
+		self.atoms.insert(list(else_) + ass + ['__endblock'] + expand)
 
 	@word('__endblock')
 	def endblock(self):
@@ -1047,16 +1071,30 @@ class Compiler(object):
 
 		self.effects.append(('if', cond))
 		self.rstack.push(arr)
+		self.rstack.push(None)
 		self.rstack.push('__term__')
 		self.atoms.insert(list(block) + ['__cond'])
 
 	@word('__cond')
 	def __cond(self):
-		while self.rstack.pop() != '__term__':
-			pass
+		vals = []
+		while True:
+			if self.rstack.top() == '__term__':
+				self.rstack.pop()
+				break
+			vals.append(self.rstack.pop())
+		vars = self.rstack.pop()
+		if vars == None:
+			vars = [self.tempname() for val in vals]
+		assert len(vars) == len(vals)
+		for i, val in enumerate(vals):
+			self.rstack.push(val)
+			self.assign(vars[i])
 		arr = self.rstack.pop()
 		if len(arr) == 0:
 			self.effects.append(('endblock', ))
+			vars.reverse()
+			self.atoms.insert(vars)
 			return
 		elif len(arr) == 1:
 			block = arr[0]
@@ -1068,6 +1106,7 @@ class Compiler(object):
 
 		block = self.blockify(block)
 		self.rstack.push(arr)
+		self.rstack.push(vars)
 		self.rstack.push('__term__')
 		self.atoms.insert(list(block) + ['__cond'])
 
