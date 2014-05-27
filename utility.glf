@@ -1,6 +1,6 @@
 ( Constants )
 :m pi 3.14159 ;
-:m tau pi 2.0 * ;
+:m tau pi 2 * ;
 
 ( Comparators )
 :m amin ( arr f )
@@ -15,14 +15,14 @@
 : closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
 	point a - =>pa
 	b a - =>ba
-	pa ba dot ba ba dot / 0.0 1.0 clamp =h
+	pa ba dot ba ba dot / 0 1 clamp =h
 	ba h * a +
 ;
 : point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
 	point a b point closest-point-line - length
 ;
-:m deg->rad pi 180. / * ;
-:m rad->deg pi 180. / / ;
+:m deg->rad pi 180 / * ;
+:m rad->deg pi 180 / / ;
 : rotate ( c:vec3 a:float -> vec3 )
 	a cos =ca
 	a sin =sa
@@ -44,21 +44,21 @@
 :m p+ ( p v ) p cart->polar v + polar->cart ;
 :m p* ( p v ) p cart->polar v * polar->cart ;
 
-:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2.0 * 1.0 - [ 1.0 iResolution .y.x / ]v * ;
+:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2 * 1 - [ 1 iResolution .y.x / ]v * ;
 
 ( Distance Field Utilities )
 :m gradient ( p f )
-	[ 0.001 0.0 ]v =h
+	[ 0.001 0 ]v =h
 	p *f =>v
 	[
 		p h + *f  p h - *f -
 		p h .yx + *f  p h .yx - *f -
-	]v 2.0 h .x * / length =>g
-	v abs g /
+	]v 2 h .x * / length =>g
+	v g abs /
 ;
 
 ( Color Operations )
 : hsv->rgb ( hsv:vec3 -> vec3 )
-    hsv .x 60.0 / [ 0. 4. 2. ]v + 6. mod 3. - abs 1. - 0.0 1.0 clamp =>rgb
-    [ 1. 1. 1. ]v rgb hsv .y mix hsv .z *
+    hsv .x 60 / [ 0 4 2 ]v + 6 mod 3 - abs 1 - 0 1 clamp =>rgb
+    [ 1 1 1 ]v rgb hsv .y mix hsv .z *
 ;

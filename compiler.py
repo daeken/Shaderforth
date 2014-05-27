@@ -12,13 +12,14 @@ def regex(pattern, flags=0):
 
 ffloat = regex(r'(-?[0-9]+\.[0-9]*)')
 efloat = regex(r'(-?\.[0-9]+)')
-bint = regex(r'(-?[0-9]+)')
+sfloat = regex(r'(-?[0-9]+)')
+bint = regex(r'#(-?[0-9]+)')
 
 satis = lambda inp, *funcs: any(func(inp) for func in funcs)
 
 def parse(code):
 	def sub(elem):
-		if satis(elem, ffloat, efloat):
+		if satis(elem, ffloat, efloat, sfloat):
 			return float(elem)
 		elif bint(elem):
 			return int(elem)
@@ -1039,8 +1040,9 @@ class Compiler(object):
 	@word('cond')
 	def cond(self):
 		arr = self.rstack.pop()
+		assert arr[0] == 'array'
 
-		(cond, block), arr = arr[:2], arr[2:]
+		(cond, block), arr = arr[1:3], arr[3:]
 		block = self.blockify(block)
 
 		self.effects.append(('if', cond))
