@@ -154,6 +154,7 @@ glfuncs = dict(
 	smoothstep=3, 
 	ceil=1, 
 	floor=1, 
+	sign=1, 
 )
 gltypes = dict(
 	dot='float', 
@@ -210,6 +211,7 @@ class Compiler(object):
 		dead = [name for name in self.words if name not in required]
 		for name in dead:
 			del self.words[name]
+			del self.deps[name]
 
 		old = sys.stdout
 		sys.stdout = StringIO()
@@ -352,10 +354,21 @@ class Compiler(object):
 				continue
 
 			print type.rename(), self.rename(name) + ';'
-		for name in self.words:
-			if name != 'main':
-				print '%s %s(%s);' % (self.rename(self.wordtypes[name][1]), self.rename(name), ', '.join(self.rename(type) for type in self.wordtypes[name][0]))
-		for name, (locals, effects, localorder) in self.words.items():
+		deps = self.deps
+		wordorder = []
+		while len(deps):
+			for name, wdeps in self.deps.items():
+				made = True
+				for dname in wdeps:
+					if dname not in wordorder:
+						made = False
+						break
+				if made:
+					del self.deps[name]
+					wordorder.append(name)
+					break
+		for name in wordorder:
+			locals, effects, localorder = self.words[name]
 			defd = self.wordtypes[name][2]
 
 			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0])))
@@ -385,7 +398,7 @@ class Compiler(object):
 		elif name in self.renamed:
 			return self.renamed[name]
 		elif not self.minimize:
-			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_')
+			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_').replace('__', '_')
 			return name
 		else:
 			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -613,16 +626,16 @@ class Compiler(object):
 			elif token == ']':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(temp)
+				self.rstack.push(['array'] + temp)
 			elif token == ']v':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(temp)
+				self.rstack.push(['array'] + temp)
 				self.avec()
 			elif token == ']m':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(temp)
+				self.rstack.push(['array'] + temp)
 				self.amat()
 			elif token == '{':
 				self.rstack.push(self.block())
@@ -726,11 +739,15 @@ class Compiler(object):
 
 	def map(self, name):
 		tlist = self.rstack.pop()
+		if tlist[0] != 'array':
+			self.rstack.push(tlist)
+			self.veca()
+			tlist = self.rstack.pop()
 		
 		atoms = self.blockify(name)
 		tatoms = []
 		tatoms.append(u'[')
-		for i, val in enumerate(tlist):
+		for i, val in enumerate(tlist[1:]):
 			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
@@ -739,11 +756,15 @@ class Compiler(object):
 		self.atoms.insert(tatoms)
 
 	def reduce(self, name):
-		elems = self.rstack.pop()
+		tlist = self.rstack.pop()
+		if tlist[0] != 'array':
+			self.rstack.push(tlist)
+			self.veca()
+			tlist = self.rstack.pop()
 
 		atoms = self.blockify(name)
 		tatoms = []
-		for i, val in enumerate(elems):
+		for i, val in enumerate(tlist[1:]):
 			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
@@ -776,6 +797,8 @@ class Compiler(object):
 					return 'vec%i' % (len(expr[0])-1)
 			elif expr[0].startswith('vec'):
 				return expr[0]
+			elif expr[0] == 'array':
+				return 'array'
 			elif expr[0] in gltypes:
 				return gltypes[expr[0]]
 			elif expr[0] in self.words:
@@ -801,8 +824,7 @@ class Compiler(object):
 			return 'float'
 		assert False
 
-	@word('dup')
-	def dup(self):
+	def ensure_stored(self, pop=False):
 		top = self.rstack.pop()
 
 		if not isinstance(top, tuple):
@@ -815,15 +837,22 @@ class Compiler(object):
 			inline = False
 
 		if inline:
-			self.rstack.push(top)
-			self.rstack.push(top)
+			if not pop:
+				self.rstack.push(top)
+			return top
 		else:
 			temp = 'var_%i' % len(self.locals)
 			self.locals[temp] = Type(self.infertype(top))
 			temp = ('var', temp)
 			self.effects.append(('=', temp, top))
-			self.rstack.push(temp)
-			self.rstack.push(temp)
+			if not pop:
+				self.rstack.push(temp)
+			return temp
+
+	@word('dup')
+	def dup(self):
+		top = self.ensure_stored()
+		self.rstack.push(top)
 
 	@word('swap')
 	def swap(self):
@@ -841,12 +870,14 @@ class Compiler(object):
 
 	@word('flatten')
 	def flatten(self):
-		for elem in self.rstack.pop():
+		for elem in self.rstack.pop()[1:]:
 			self.rstack.push(elem)
 
 	@word('avec')
 	def avec(self):
 		tlist = self.rstack.pop()
+		assert tlist[0] == 'array'
+		tlist = tlist[1:]
 		types = map(self.infertype, tlist)
 		length = 0
 		for type in types:
@@ -858,9 +889,19 @@ class Compiler(object):
 				assert False
 		self.rstack.push(tuple(['vec%i' % length] + tlist))
 
+	@word('veca')
+	def veca(self):
+		vec = self.ensure_stored(pop=True)
+		type = self.infertype(vec)
+		assert 'vec' in type
+		size = int(type[type.find('vec')+3:])
+		self.rstack.push(['array'] + [('.' + 'xyzw'[i], vec, False) for i in xrange(size)])
+
 	@word('amat')
 	def amat(self):
 		tlist = self.rstack.pop()
+		assert tlist[0] == 'array'
+		tlist = tlist[1:]
 		if len(tlist) == 4:
 			size = 2
 		elif len(tlist) == 9:
