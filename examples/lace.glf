@@ -3,7 +3,7 @@
 	@float uniform =iGlobalTime
 ;
 
-:m iter 25 ;
+:m iter #25 ;
 :m iter-delta ( )
 	( iGlobalTime 60.0 / sin 2.0 / 0.5 + =>v
 	333.0 333.33 v mix )

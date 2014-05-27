@@ -3,32 +3,8 @@
 	@float uniform =iGlobalTime
 ;
 
-:m amin ( arr f )
-	arr \{ ( $a $b )
-		a *f b *f min =m
-		a b a *f m == select
-	}
-;
-
-: point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
-	point a - =>pa
-	b a - =>ba
-	pa ba dot ba ba dot / 0.0 1.0 clamp =h
-	pa ba h * - length
-;
-
-:m grad ( p f )
-	[ 0.001 0.0 ]v =h
-	p *f =>v
-	[
-		p h + *f  p h - *f -
-		p h .yx + *f  p h .yx - *f -
-	]v 2.0 h .x * / length =>g
-	v abs g /
-;
-
-:m steps 20 ;
-:m step-delta 1.0 steps 1 - float / ;
+:m steps #20 ;
+:m step-delta 1 steps #1 - float / ;
 
 : point-in-curve-box ( s:vec2 c1:vec2 c2:vec2 e:vec2 p:vec2 err:float -> bool )
 	[ s c1 c2 e ] =>cp
@@ -48,7 +24,7 @@
 ;
 
 : curve-dist ( s:vec2 c1:vec2 c2:vec2 e:vec2 p:vec2 -> float )
-	10000.0 =dist
+	10000 =dist
 
 	{
 		s =prev
@@ -64,7 +40,7 @@
 
 			b1 b2 t mix =cur
 
-			p { ( gp ) prev cur gp point-distance-line } grad dist min =dist
+			p { ( gp ) prev cur gp point-distance-line } gradient dist min =dist
 			cur =prev
 
 			&break dist 0.005 <= when
@@ -74,10 +50,10 @@
 ;
 
 : warp ( c:vec2 -> vec2 )
-	c iGlobalTime 4.0 * sin 4.0 + 3.0 / *
+	c iGlobalTime 4 * sin 4 + 3 / *
 ;
 
-gl_FragCoord .xy iResolution .xy / 2.0 * 1.0 - =p
+iResolution frag->position =p
 
 [
 	[ [ [ 0.022188 0.094792 ]v [ 0.015938 0.194792 ]v [ -0.118437 0.290625 ]v [ -0.130937 0.082292 ]v ] [ 1.000000 0.000000 0.000000 ]v ]
@@ -87,6 +63,6 @@ gl_FragCoord .xy iResolution .xy / 2.0 * 1.0 - =p
 ] /{ =>[ cp color ] [ color cp /warp flatten p curve-dist ]v } { .w } amin =hit
 [ hit .w.xyz ] =>[ dist color ]
 
-dist 0.02 - neg 50.0 * =>dist
+dist 0.02 - neg 50 * =>dist
 
-[ color dist * 1.0 ]v =gl_FragColor
+[ color dist * 1 ]v =gl_FragColor

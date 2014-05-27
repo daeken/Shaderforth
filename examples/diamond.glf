@@ -7,40 +7,40 @@
 	axis normalize =axis
 	angle sin =s
 	angle cos =c
-	1.0 c - =>oc
+	1 c - =>oc
 
 	[
-		oc axis .x * axis .x * c +           , oc axis .x * axis .y * axis .z s * - , oc axis .z * axis .x * axis .y s * + , 0.0
-		oc axis .x * axis .y * axis .z s * + , oc axis .y * axis .y * c +           , oc axis .y * axis .z * axis .x s * - , 0.0
-		oc axis .z * axis .x * axis .y s * - , oc axis .y * axis .z * axis .x s * + , oc axis .z * axis .z * c +           , 0.0
-		0.0                                  , 0.0                                  , 0.0                                  , 1.0
+		oc axis .x * axis .x * c +           , oc axis .x * axis .y * axis .z s * - , oc axis .z * axis .x * axis .y s * + , 0
+		oc axis .x * axis .y * axis .z s * + , oc axis .y * axis .y * c +           , oc axis .y * axis .z * axis .x s * - , 0
+		oc axis .z * axis .x * axis .y s * - , oc axis .y * axis .z * axis .x s * + , oc axis .z * axis .z * c +           , 0
+		0                                    , 0                                    , 0                                    , 1
 	]m
 ;
 
-:m res-scale iResolution .xy / 0.5 - 2.0 * [ 1.0 iResolution .y.x / ]v * ;
+:m res-scale iResolution .xy / 0.5 - 2 * [ 1 iResolution .y.x / ]v * ;
 
-:m rotate ( p axis angle ) [ p 1.0 ]v axis angle rotationmat * .xyz ;
+:m rotate ( p axis angle ) [ p 1 ]v axis angle rotationmat * .xyz ;
 
 :m sphere ( p s ) p length s - ;
 :m torus ( p t ) [ p .xy length t .x - p .z ]v length t .y - ;
 : box ( p:vec3 b:vec3 -> float )
 	p abs b - =d
-	d .x.y.z max max 0.0 min
-	d 0.0 max length +
+	d \max 0 min
+	d 0 max length +
 ;
 :m plane ( p n ) p n .xyz dot n .w + ;
 
 :m union \min ;
 :m hitunion \{ ( $a $b ) a b a .distance b .distance < select } ;
-:m subtract \{ ( d1 d2 ) d1 negate d2 max } ;
+:m subtract \{ ( d1 d2 ) d1 neg d2 max } ;
 :m intersect \max ;
 :m repeat ( block p c ) p c mod 0.5 c * - *block ;
 
 :m time iGlobalTime ;
 
-:m tx ( p t ) p [ t   0.0 0.0 ]v + ;
-:m ty ( p t ) p [ 0.0 t   0.0 ]v + ;
-:m tz ( p t ) p [ 0.0 0.0 t   ]v + ;
+:m tx ( p t ) p [ t 0 0 ]v + ;
+:m ty ( p t ) p [ 0 t 0 ]v + ;
+:m tz ( p t ) p [ 0 0 t ]v + ;
 
 :struct hit
 	@float =distance
@@ -62,9 +62,9 @@
 	p trotate =p
 
 	[
-		( [ p [ time sin 1.8 * 0.0 3.0 ]v + [ 2.0 2.0 0.1 ]v box 0 ] hit ) ( reflective backplane )
-		[ p trotate [ 0.2 0.5 0.6 ]v + [ 0.5 0.2 ]v torus 1 ] hit
-		[ p trotate [ 0.2 0.5 0.6 time sin 2.0 * + ]v + 0.25 sphere 2 ] hit
+		( [ p [ time sin 1.8 * 0 3 ]v + [ 2 2 0 ]v box #0 ] hit ) ( reflective backplane )
+		[ p trotate [ 0.2 0.5 0.6 ]v + [ 0.5 0.2 ]v torus #1 ] hit
+		[ p trotate [ 0.2 0.5 0.6 time sin 2 * + ]v + 0.25 sphere #2 ] hit
 		[
 			[
 				[
@@ -74,12 +74,12 @@
 				] union
 				p [ 0.3 0.3 0.3 ]v box
 			] subtract
-		3 ] hit
+		#3 ] hit
 		[ [
 			p [ 0.5 0.1 0.1 ]v box
 			p [ 0.1 0.5 0.1 ]v box
 			p [ 0.1 0.1 0.5 ]v box
-		] union 4 ] hit
+		] union #4 ] hit
 	] hitunion
 ;
 
@@ -94,11 +94,11 @@
 
 : get-material ( id:int -> material )
 	[
-		0 [ [ 1.0 1.0 1.0 1.0 ]v 0.0 0.3 10.0 -1.0 0.0  ] material
-		1 [ [ 1.0 0.0 0.0 0.8 ]v 0.2 0.8 30.0 0.9 1.333 ] material
-		2 [ [ 1.0 0.0 1.0 1.0 ]v 0.2 0.7 30.0 1.0 0.0   ] material
-		3 [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 2.419 ] material
-		  [ [ 1.0 1.0 1.0 1.0 ]v 0.2 1.0 10.0 1.2 5.0   ] material
+		#0 [ [ 1 1 1 1 ]v 0 0.3 10 -1 0  ] material
+		#1 [ [ 1 0 0 0.8 ]v 0.2 0.8 30 0.9 1.333 ] material
+		#2 [ [ 1 0 1 1 ]v 0.2 0.7 30 1 0   ] material
+		#3 [ [ 1 1 1 1 ]v 0.2 1 10 1.2 2.419 ] material
+		  [ [ 1 1 1 1 ]v 0.2 1 10 1.2 5   ] material
 	] id choose
 ;
 
@@ -106,49 +106,49 @@
 
 :m getnormal ( p )
 	[
-		p eps        tx scene .distance
-		p eps negate tx scene .distance -
-		p eps        ty scene .distance
-		p eps negate ty scene .distance -
-		p eps        tz scene .distance
-		p eps negate tz scene .distance -
+		p eps     tx scene .distance
+		p eps neg tx scene .distance -
+		p eps     ty scene .distance
+		p eps neg ty scene .distance -
+		p eps     tz scene .distance
+		p eps neg tz scene .distance -
 	]v normalize
 ;
 
-gl_FragCoord .xy 2.0 * iResolution .xy - iResolution .y / =pos
+gl_FragCoord .xy 2 * iResolution .xy - iResolution .y / =pos
 
-3.0 =>focus
-:m far 20.0 ;
+3 =>focus
+:m far 20 ;
 :m close 0.01 ;
 
-[ 0.0 0.0 5.0 ]v =origin
-[ 0.0 0.0 0.0 ]v =>ct
+[ 0 0 5 ]v =origin
+[ 0 0 0 ]v =>ct
 
 ct origin - normalize =>cd
-[ 0.0 0.5 0.0 ]v =cu
+[ 0 0.5 0 ]v =cu
 cd cu cross =>cs
 cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
-[ 0.0 0.0 0.0 ]v =c
+[ 0 0 0 ]v =c
 
 : shade ( cur:marched normal:vec3 level:float -> vec4 )
 	cur .pos =>ray
 
-	[ 0.0 8.0 0.0 ]v =>lightpos
-	[ 1.0 1.0 1.0 ]v =>lightcolor
+	[ 0 8 0 ]v =>lightpos
+	[ 1 1 1 ]v =>lightcolor
 	lightpos ray - normalize =ivec
-	ivec normal dot 0.0 max =incidence
+	ivec normal dot 0 max =incidence
 	lightcolor incidence * =>diffuse
 	0.1 =>ambient
 
 	cur .material get-material =mat
 
-	0.0 =specular
+	0 =specular
 	{
 		ivec cur .origin + normalize normal dot
-		0.0 max mat .specular pow
+		0 max mat .specular pow
 		lightpos ray - length / =specular
-	} mat .specular 0.0 != incidence 0.0 > and when
+	} mat .specular 0 != incidence 0 > and when
 
 	[ mat .color .rgb.a * diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * mat .reflection ]v
 ;
@@ -158,16 +158,16 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 		ray scene =cur
 		ray dir cur .distance 0.025 max * + =ray
 		{ break } cur .distance 0.01 > cur .material mat != or when
-	} 100 times
+	} #100 times
 	ray
 ;
 
 : march ( ray:vec3 dir:vec3 -> marched )
 	ray =origin
 	@hit =cur
-	0.0 =dist
-	[ 0.0 0.0 0.0 ]v =color
-	1.0 =trans
+	0 =dist
+	[ 0 0 0 ]v =color
+	1 =trans
 	{
 		ray scene =cur
 		dist cur .distance + far min =dist
@@ -184,17 +184,17 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 					dir normal reflect normalize =rdir
 					ray dir cur .distance * + =rorigin
 					rorigin dir march-one color + =color
-				} mat .reflection 0.0 > when
+				} mat .reflection 0 > when
 				[ dist cur .distance origin ray cur .material color ] marched =>cm
-				cm normal 1.0 shade =>shaded
+				cm normal 1 shade =>shaded
 				shaded .rgb trans * color + =color
 				mat .color .a trans * =trans
-				dir normal 1.0 mat .refraction / refract =dir
+				dir normal 1 mat .refraction / refract =dir
 				ray dir cur .material skip-bulk =ray
 				dir normal mat .refraction refract =dir
-			} mat .refraction 0.0 == if
+			} mat .refraction 0 == if
 		} cur .distance close < when
-	} 50 times
+	} #50 times
 	[
 		dist far cur .distance close < select
 		cur .distance
@@ -208,8 +208,8 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 : march-one ( ray:vec3 dir:vec3 -> vec3 )
 	ray =origin
 	@hit =cur
-	0.0 =dist
-	[ 0.0 0.0 0.0 ]v =color
+	0 =dist
+	[ 0 0 0 ]v =color
 	{
 		ray scene =cur
 		dist cur .distance + far min =dist
@@ -217,7 +217,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
 		{ break } dist far >= when
 		{ break } cur .distance close < when
-	} 20 times
+	} #20 times
 	[
 		dist far cur .distance close < select
 		cur .distance
@@ -234,9 +234,9 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 	color
 ;
 
-5 =>iters
+#5 =>iters
 {
-	float iters float / 1.0 swap - =level
+	float iters float / 1 swap - =level
 
 	origin dir march =cur
 	c cur .color + =c
@@ -251,10 +251,10 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 			cur .pos dir cur .obj-distance * + =origin
 		} {
 			break
-		} shaded .w 0.0 != if
+		} shaded .w 0 != if
 	} {
 		break
 	} cur .distance far < if
 } iters times
 
-[ c 1.0 ]v =gl_FragColor
+[ c 1 ]v =gl_FragColor

@@ -8,27 +8,27 @@
 
 : derive-pos ( p:vec2 v:vec2 a:vec2 t:float -> vec2 )
 	p v t * +
-	a 2. / t t * * +
+	a 2 / t t * * +
 ;
 
-:m gravity [ 0.0 -0.3 ]v ;
+:m gravity [ 0 -0.3 ]v ;
 
 :m noise ( s )
-	time 100.0 * s 211.0 * + gl_FragCoord .x 1489.0 * cos gl_FragCoord .y 1979.0 * cos + * sin 1.0 + 2.0 /
+	time 100 * s 211 * + gl_FragCoord .x 1489 * cos gl_FragCoord .y 1979 * cos + * sin 1 + 2 /
 ;
 
 : smoke-trail ( ltime:float duration:float origin:vec2 fp:vec2 )
-	[ ltime gl_FragCoord .x + 1187. * sin ltime gl_FragCoord .y + 1447. * sin ]v 10.0 / dup noise * =off
+	[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ]v 10 / dup noise * =off
 	origin fp op off - closest-point-line =lp
 	lp op - length =d
-	1.0 lp fp - length origin fp - length / -
-	lp fp - length 0.0 0.1 clamp 30.0 * *
-		1.0 time ltime - duration / 0.0 1.0 clamp - 3.0 *
-		1.0
-	duration 0.0 != select * =r
+	1 lp fp - length origin fp - length / -
+	lp fp - length 0 0.1 clamp 30 * *
+		1 time ltime - duration / 0 1.0 clamp - 3 *
+		1
+	duration 0 != select * =r
 
-	off length noise 0.3 * 1.0 + =gn
-	0.1 d - 0.0 1.0 clamp 5.0 / r * gn * 0.0 1.0 clamp =grey
+	off length noise 0.3 * 1 + =gn
+	0.1 d - 0 1.0 clamp 5 / r * gn * 0 1.0 clamp =grey
 	[ grey dup dup ]v fragcolor + =fragcolor
 ;
 
@@ -38,17 +38,17 @@
 
 	vel origin + length noise =>n
 
-	dia fp op - length - 900. dia * * =d
+	dia fp op - length - 900 dia * * =d
 	{
-		d color 2.0 1.5 n - * * *
-		dur t - 3.0 * 0.0 1.0 clamp *
+		d color 2 1.5 n - * * *
+		dur t - 3 * 0 1.0 clamp *
 		fragcolor + =fragcolor
-	} d 0.0 > dur t > and when
+	} d 0 > dur t > and when
 
 		ltime
-			10.0
-			3.0
-		dur 100.0 == select
+			10
+			3
+		dur 100 == select
 		origin
 		fp
 	smoke-trail
@@ -64,48 +64,48 @@
 			origin
 			[
 				i float ai * ltime +
-				0.4 ltime 2179. * i 1 + float 2287.0 * ltime + sin 100.0 * + sin 0.03 * +
+				0.4 ltime 2179 * i #1 + float 2287 * ltime + sin 100 * + sin 0.03 * +
 			]v polar->cart
-			ltime 571.0 * sin 0.5 * 3.0 +
+			ltime 571 * sin 0.5 * 3 +
 			color
 			0.03
 		spark
-	} 10 times
+	} #10 times
 
 	{
-		[ ltime gl_FragCoord .x + 1187. * sin ltime gl_FragCoord .y + 1447. * sin ]v 10.0 / dup noise * =off
-		1.0 origin op - off - length - 0.0 1.0 clamp 15.0 / 2.0 time ltime - - * off length noise * =grey
+		[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ]v 10 / dup noise * =off
+		1 origin op - off - length - 0 1.0 clamp 15 / 2 time ltime - - * off length noise * =grey
 		[ grey dup dup ]v fragcolor + =fragcolor
-	} time ltime - 2.0 <= when
+	} time ltime - 2 <= when
 ;
 
 : firework ( ltime:float origin:vec2 xvel:float spokes:int color:vec3 )
-	3.0 =fuse
-	ltime 389.0 * sin 0.03 * 1.1 + =speed
+	3 =fuse
+	ltime 389 * sin 0.03 * 1.1 + =speed
 
 	[ xvel speed ]v =vel
 
 	time ltime - =>t
 
-		{ ltime origin vel 100.0 color 0.03 spark }
+		{ ltime origin vel 100 color 0.03 spark }
 		{
 			origin vel gravity fuse t min derive-pos =fp
-			ltime 6.0 origin fp smoke-trail
+			ltime 6 origin fp smoke-trail
 			ltime fuse + fp vel spokes color shape
 		}
 	t fuse <= if
 
-	{
-		fragcolor color 2.0 / 0.2 t fuse - - * + =fragcolor
-	} t fuse - 0.2 <= t fuse >= and when 
+	( {
+		fragcolor color 2 / 0.2 t fuse - - * + =fragcolor
+	} t fuse - 0.2 <= t fuse >= and when )
 ;
 
-gl_FragCoord .xy iResolution .xy / dup =np 2.0 * 1.0 - 1.5 * [ 1.0 iResolution .y.x / ]v * =op
+gl_FragCoord .xy iResolution .xy / dup =np 2 * 1 - 1.5 * [ 1 iResolution .y.x / ]v * =op
 
-[ 0. 0. 0. ]v =fragcolor
+[ 0 0. 0 ]v =fragcolor
 
-:m steps 3.0 ;
-:m buffertime 10.0 ;
+:m steps 3 ;
+:m buffertime 10 ;
 
 : frame ( to:float )
 	iGlobalTime to + =time
@@ -114,26 +114,26 @@ gl_FragCoord .xy iResolution .xy / dup =np 2.0 * 1.0 - 1.5 * [ 1.0 iResolution .
 
 		{
 				it
-				[ it 11. * sin 0.25 * -1.5 ]v
-				it 19. * sin 0.1 *
-				5.0 it 2311. * sin 1.0 + 5.0 2.0 / * + int
+				[ it 3253 * sin 0.25 * -1.5 ]v
+				it 709 * sin 0.2 *
+				5 it 2311 * sin 1 + 5 2.0 / * + int
 				[
-					it 197. * 360. mod
-					it 2267. * sin abs
+					it 197 * 360 mod
+					it 2267 * sin abs
 					0.8
 				]v hsv->rgb
 			firework
-		} it 1493. * sin 0.95 > it 0.0 >= and when
+		} it 1493 * sin 0.95 > it 0 >= and when
 	} steps buffertime * int times
 ;
 
-0.0 frame
+0 frame
 
 [
 	fragcolor
-	[ 29. 255. / 8. 255. / 64. 255. / ]v np .x iGlobalTime 10.0 / + sin 0.1 * 1.0 + *
-	[ 0.0 0.0 0.0 ]v
-	1.0 np .y dup * - mix +
-	1.0
+	[ 29 255. / 8 255. / 64 255. / ]v np .x iGlobalTime 10 / + sin 0.1 * 1 + *
+	[ 0 0.0 0 ]v
+	1 np .y dup * - mix +
+	1
 ]v
  =gl_FragColor

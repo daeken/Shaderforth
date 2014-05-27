@@ -23,14 +23,13 @@
 ;
 :m deg->rad pi 180 / * ;
 :m rad->deg pi 180 / / ;
-: rotate ( c:vec3 a:float -> vec3 )
+: rotate ( c:vec2 a:float -> vec2 )
 	a cos =ca
 	a sin =sa
 
 	[
 		c .x ca * c .y sa * -
 		c .y ca * c .x sa * +
-		c .z
 	]v
 ;
 :m rotate-deg ( c a ) c a deg->rad rotate ;
