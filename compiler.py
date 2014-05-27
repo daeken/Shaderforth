@@ -22,7 +22,7 @@ def parse(code):
 		if satis(elem, ffloat, efloat, sfloat):
 			return float(elem)
 		elif bint(elem):
-			return int(elem)
+			return int(elem[1:])
 		else:
 			return unicode(elem)
 
@@ -492,7 +492,7 @@ class Compiler(object):
 					parsed.consume()
 					assert len([_ for _ in argnames if _ != None]) == 0 or None not in argnames
 					if None in argnames:
-						argnames = ['arg_%i' % i for i in xrange(argnames)]
+						argnames = ['arg_%i' % i for i in xrange(len(argnames))]
 					wordtypes[name] = tuple(args), ret, argnames
 			elif token == ':m':
 				modstack.append(cur)
@@ -536,7 +536,7 @@ class Compiler(object):
 		self.globals.update(locals)
 
 		def subword(name):
-			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()))
+			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()[1:]))
 		sdefs = {}
 		for name, atoms in structs.items():
 			locals, effects, localorder = self.compile('__' + name, atoms, pre=True)
@@ -923,7 +923,7 @@ class Compiler(object):
 			names.append(token)
 		arr = self.rstack.pop()
 		for i, name in enumerate(names):
-			self.rstack.push(arr[i])
+			self.rstack.push(arr[i+1])
 			self.assign(name)
 
 	@word('=>[')
@@ -936,7 +936,7 @@ class Compiler(object):
 			names.append(token)
 		arr = self.rstack.pop()
 		for i, name in enumerate(names):
-			self.rstack.push(arr[i])
+			self.rstack.push(arr[i+1])
 			self.macroassign(name)
 
 	@word('call')
@@ -1089,9 +1089,10 @@ class Compiler(object):
 	def choose(self):
 		val = self.rstack.pop()
 		arr = self.rstack.pop()
+		assert arr[0] == 'array'
 
 		cur = arr.pop()
-		while len(arr):
+		while len(arr) > 2:
 			left = arr.pop()
 			comp = arr.pop()
 			cur = ('?:', ('==', val, comp), left, cur)
