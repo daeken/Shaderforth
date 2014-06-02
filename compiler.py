@@ -1,4 +1,4 @@
-import re, sys
+import copy, re, sys
 from cStringIO import StringIO
 
 def regex(pattern, flags=0):
@@ -156,6 +156,7 @@ glfuncs = dict(
 	ceil=1, 
 	floor=1, 
 	sign=1, 
+	texture2D=2
 )
 gltypes = dict(
 	dot='float', 
@@ -168,12 +169,14 @@ gltypes = dict(
 	mat4='mat4', 
 	float='float', 
 	int='int',
+	sampler2D='sampler2D'
 )
 btypes = 'void int float bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
 	def __init__(self, code, shadertoy=False, minimize=False):
+		self.barecode = code
 		self.code = file('utility.glf', 'r').read().decode('utf-8') + code
 		self.tempi = 0
 		self.shadertoy = shadertoy
@@ -183,6 +186,7 @@ class Compiler(object):
 			gl_FragCoord=Type('vec4'), 
 			gl_FragColor=Type('vec4'), 
 		)
+		self.options = []
 		self.renamed = {}
 		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
@@ -199,30 +203,20 @@ class Compiler(object):
 				if atom in self.words and atom not in deps:
 					deps.append(atom)
 
-		required = ['main']
-		checked = []
-		while len(checked) < len(required):
-			for dep in required:
-				if dep in checked:
-					continue
-				for elem in self.deps[dep]:
-					if elem not in required:
-						required.append(elem)
-				checked.append(dep)
-		dead = [name for name in self.words if name not in required]
-		for name in dead:
-			del self.words[name]
-			del self.deps[name]
+		self.passes, eps = self.parsepasses()
+		eps.append('main')
 
-		old = sys.stdout
-		sys.stdout = StringIO()
-		self.output()
-		code = sys.stdout.getvalue()
-		sys.stdout = old
-		if minimize:
-			self.code = self.minshader(code)
-		else:
-			self.code = code.rstrip('\n')
+		self.outcode = {}
+		for ep in eps:
+			old = sys.stdout
+			sys.stdout = StringIO()
+			self.output(ep)
+			code = sys.stdout.getvalue()
+			sys.stdout = old
+			if minimize:
+				self.outcode[ep] = self.minshader(code)
+			else:
+				self.outcode[ep] = code.rstrip('\n')
 
 	def minshader(self, code):
 		code = re.sub(r'//.*$', '', code)
@@ -236,7 +230,7 @@ class Compiler(object):
 		code = re.sub(r'\s*(;|{|}|\(|\)|=|\+|-|\*|\/|\[|\]|,|\.|%|!|~|\?|:|<|>)\s*', r'\1', code)
 		return code.strip()
 
-	def output(self):
+	def output(self, main):
 		indentlevel = [1]
 		operators = '+ - / * < > <= >= == != && ||'.split(' ')
 		precedence = {
@@ -297,7 +291,10 @@ class Compiler(object):
 			elif atom[0] == 'arg':
 				return self.rename(atom[1])
 			elif atom[0] == 'return':
-				return 'return %s' % structure(atom[1])
+				if len(atom) == 2:
+					return 'return %s' % structure(atom[1])
+				else:
+					return 'return'
 			elif atom[0] == 'for':
 				_, name, start, top = atom
 				defd.append(name)
@@ -328,7 +325,7 @@ class Compiler(object):
 
 		if self.shadertoy:
 			print '/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth'
-			print self.code.rstrip('\n')
+			print self.barecode.rstrip('\n')
 			print '*/'
 			print
 
@@ -342,23 +339,41 @@ class Compiler(object):
 				continue
 
 			print type.rename(), self.rename(name) + ';'
-		deps = self.deps
+
+		required = [main]
+		checked = []
+		while len(checked) < len(required):
+			for dep in required:
+				if dep in checked:
+					continue
+				for elem in self.deps[dep]:
+					if elem not in required:
+						required.append(elem)
+				checked.append(dep)
+		dead = [name for name in self.words if name not in required]
+
+		deps = copy.deepcopy(self.deps)
 		wordorder = []
 		while len(deps):
-			for name, wdeps in self.deps.items():
+			for name, wdeps in deps.items():
 				made = True
 				for dname in wdeps:
 					if dname not in wordorder:
 						made = False
 						break
 				if made:
-					del self.deps[name]
+					del deps[name]
 					wordorder.append(name)
 					break
 		for name in wordorder:
+			if name in dead:
+				continue
 			locals, effects, localorder = self.words[name]
 			defd = self.wordtypes[name][2]
 			effects = self.predeclare(effects)
+
+			if name == main:
+				name = 'main'
 
 			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0])))
 			for effect in effects:
@@ -415,7 +430,7 @@ class Compiler(object):
 		elif name in self.renamed:
 			return self.renamed[name]
 		elif not self.minimize:
-			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_').replace('__', '_')
+			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_').replace('?', '_').replace('__', '_')
 			return name
 		else:
 			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -455,8 +470,9 @@ class Compiler(object):
 		parseloc = 0
 		words, macros = {'main': []}, {}
 		macrospec = {}
-		wordtypes = {'main' : ((), 'void', [])}
+		wordtypes = {'main' : ((), 'void', []), 'texture2D' : ((), 'vec4', [])}
 		globals = []
+		self.passes = []
 		structs = {}
 
 		modstack = []
@@ -524,6 +540,9 @@ class Compiler(object):
 			elif token == ':globals':
 				modstack.append(cur)
 				cur = globals
+			elif token == ':passes':
+				modstack.append(cur)
+				cur = self.passes
 			elif token == ':struct':
 				modstack.append(cur)
 				name = parsed.consume()
@@ -548,6 +567,7 @@ class Compiler(object):
 					break
 			words[name] = tokens
 
+		self.words = {}
 		locals, effects, localorder = self.compile('__globals', globals, pre=True)
 		self.globals.update(locals)
 
@@ -562,7 +582,22 @@ class Compiler(object):
 
 		return words, wordtypes, macros, sdefs
 
+	def parsepasses(self):
+		self.dimensions = {}
+		locals, effects, localorder = self.compile('__passes', self.passes, pre=True)
+		passes = []
+		eps = []
+		for effect in effects:
+			assert effect[0] == '='
+			if effect[2][0] == 'var':
+				passes.append((effect[1][1], effect[2][1]))
+			else:
+				eps.append(effect[2][0])
+				passes.append((effect[1][1], effect[2][0]))
+		return passes, eps
+
 	def compile(self, name, atoms, pre=False):
+		Compiler.compiling = name
 		self.atoms = Code(atoms)
 		self.rstack = Stack()
 		self.sstack = Stack()
@@ -818,7 +853,7 @@ class Compiler(object):
 				return 'array'
 			elif expr[0] in gltypes:
 				return gltypes[expr[0]]
-			elif expr[0] in self.words:
+			elif expr[0] in self.wordtypes:
 				return self.wordtypes[expr[0]][1]
 			elif expr[0] == '[]':
 				return self.infertype(expr[1])
@@ -1061,6 +1096,10 @@ class Compiler(object):
 	def return_(self):
 		self.effects.append(('return', self.rstack.pop()))
 
+	@word('return-nil')
+	def return_nil(self):
+		self.effects.append(('return', ))
+
 	@word('cond')
 	def cond(self):
 		arr = self.rstack.pop()
@@ -1185,9 +1224,23 @@ class Compiler(object):
 	def drop(self):
 		self.rstack.pop()
 
+	@word('set-dimensions')
+	def set_dimensions(self):
+		var = self.rstack.pop()
+		_, width, height = self.rstack.pop()
+		self.dimensions[var] = width, height
+
+	@word('toggle')
+	def toggle(self):
+		var = self.rstack.pop()
+		self.options.append((var, 'toggle', None))
+
 def main(fn, shadertoy=None, minimize=None):
 	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
-	print compiler.code
+	for name, code in compiler.outcode.items():
+		print >>sys.stderr, '// Shader', name
+		print code
+		print >>sys.stderr
 
 if __name__=='__main__':
 	main(*sys.argv[1:])

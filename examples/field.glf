@@ -4,43 +4,58 @@
 ;
 :m time iGlobalTime ;
 
-: circle ( p:vec2 r:float -> float )
+:m circle ( p r )
 	p length r -
 ;
-: box ( p:vec2 d:vec2 -> float )
-	p abs d - =d
-		d \max 0 min
-		d 0 max length
-	+
+:m box ( p d )
+	p abs d - 0 max length
+;
+:m roundbox ( p r d )
+	 p d box r - 0 max
 ;
 
-:m intersect max ;
-:m subtract neg max ;
-:m union min ;
-:m shape call ;
+:m intersect { .x } amax ;
+:m union { .x } amin ;
+:m subtract \{ ( a b ) [ a .x b .x neg max a .y ]v } ;
+
+:m repeat! ( p c ) p c mod .5 c * - ;
+:m repeat ( f p c ) p c repeat! dup p swap - *f ;
+:m scale ( f p s ) p s / *f [ s 1 ]v * ;
 
 iResolution frag->position .5 / =p
 
-: distance-field ( p:vec2 -> vec2 )
+: distance-field ( op:vec2 -> vec2 )
+	:m wave ( v ) v 3 * time 2 * + sin .1 * ;
+	:m wave-y ( v ) v wave neg .6 + ;
+	op .x dup .15 repeat! - =rx
 	[
-		[ p [ time sin 0.3 time * sin ]v + [ 0.3 0.3 ]v box 0 ]v
-		[ p [ 0.2 time * sin 0.7 time * sin ]v + [ 0.37 time * cos abs 0.1 + 0.3 * 0.4 ]v box 1 ]v
-		[ p [ 0.7 time * sin 0.13 time * sin ]v + 0.5 circle 2 ]v
-	] { .x } amin
+		{ ( p r )
+			[
+				[ p 0.02 [ .025 .025 ]v roundbox 0 ]v
+				[ op .y rx wave-y + 0 ]v
+			] intersect
+		} op [ 0 rx wave neg ]v + [ .15 .15 ]v repeat
+		[
+			[ op [ time .3 * sin dup wave-y time 4 * sin .1 * + ]v + .2 circle 1 ]v
+			[ op .y op .x wave-y + 0 ]v
+		] subtract
+	] union [ eps 0 ]v -
 ;
 
-: material ( id:float -> vec4 )
+:m material ( id p d )
 	[
-		0 id == { [ 1 0 0 1 ]v }
-		1 id == { [ 0 1 0 1 ]v }
-		2 id == { [ 0 0 1 1 ]v }
-		{ [ 1 0 1 1 ]v }
-	] cond
+		0 [ [ 179 .814 .847 p .y + .3 + time p .x 3. * + cos .05 * + ]v hsv->rgb 1 ]v
+		1 [ [ 299 93 255 / .2 d - 5 * dup * .4 * ]v hsv->rgb 1 ]v
+		2 [ 0 0 1 1 ]v
+		[ 1 0 1 1 ]v
+	] id choose
 ;
 
 : texture ( p:vec2 d:float -> vec4 )
-	p distance-field .y material =mat
-	d neg mat 100 * *
+		[ .06 .04 .11 1 ]v
+		p distance-field .y p d material
+		.01 d - 100 * 0 1 clamp
+	mix 
 ;
 
 	p

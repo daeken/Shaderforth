@@ -1,6 +1,8 @@
 ( Constants )
 :m pi 3.14159 ;
 :m tau pi 2 * ;
+:m eps 0.00001 ;
+:m inf 10000000 ;
 
 ( Comparators )
 :m amin ( arr f )
@@ -9,7 +11,27 @@
 		a b a *f m == select
 	}
 ;
+:m amax ( arr f )
+	arr \{ ( $a $b )
+		a *f b *f max =m
+		a b a *f m == select
+	}
+;
 :m minmax ( $a $b ) [ a b min a b max ] ;
+: smin-power ( a:float b:float k:float -> float )
+	a k ** =a
+    b k ** =b
+
+    	a b * a b + /
+    	1 k /
+    **
+;
+: smin-poly ( a:float b:float k:float -> float )
+	.5 .5 b a - * / + 0 1 clamp =h
+		b a h mix
+		[ k h 1 h - ] \*
+	-
+;
 
 ( Maths )
 : closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
@@ -33,6 +55,7 @@
 	]v
 ;
 :m rotate-deg ( c a ) c a deg->rad rotate ;
+:m ** pow ;
 
 ( Coordinate System Utilities )
 
