@@ -1,5 +1,7 @@
-import copy, re, sys
-from cStringIO import StringIO
+import re
+
+def depcopy(deps):
+	return dict((k, list(v)) for k, v in deps.items())
 
 def regex(pattern, flags=0):
 	def sub(text):
@@ -194,7 +196,7 @@ class Compiler(object):
 		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 		self.deps = {}
-		self.mainWords = {'main' : 'main'}
+		self.mainWords = {}
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
@@ -359,7 +361,7 @@ class Compiler(object):
 				checked.append(dep)
 		dead = [name for name in self.words if name not in required]
 
-		deps = copy.deepcopy(self.deps)
+		deps = depcopy(self.deps)
 		wordorder = []
 		while len(deps):
 			for name, wdeps in deps.items():
@@ -1318,4 +1320,5 @@ def main(fn, shadertoy=None, minimize=None):
 		print >>sys.stderr
 
 if __name__=='__main__':
+	import sys
 	main(*sys.argv[1:])
