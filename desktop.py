@@ -14,7 +14,8 @@ from kivy.clock import Clock
 from kivy.app import App
 from kivy.uix.floatlayout import FloatLayout
 from kivy.core.window import Window
-from kivy.graphics import RenderContext
+from kivy.graphics import Color, Fbo, Rectangle, RenderContext
+from kivy.graphics.opengl import glActiveTexture, GL_TEXTURE0
 from kivy.properties import StringProperty
 
 # This header must be not changed, it contain the minimum information from Kivy.
@@ -22,33 +23,18 @@ header = '''
 #ifdef GL_ES
 precision highp float;
 #endif
-
-/* Outputs from the vertex shader */
-varying vec4 frag_color;
-varying vec2 tex_coord0;
-
-/* uniform texture samplers */
-uniform sampler2D texture0;
 '''
 
-# Plasma shader
-plasma_shader = header + '''
-uniform vec3 iResolution;
-uniform float iGlobalTime;
+class RTT(Fbo):
+	def __init__(self, code, **kwargs):
+		Fbo.__init__(self, **kwargs)
+		self.canvas = RenderContext()
 
-void main(void)
-{
-   float x = gl_FragCoord.x;
-   float y = gl_FragCoord.y;
-   float mov0 = x+y+cos(sin(iGlobalTime)*2.)*100.+sin(x/100.)*1000.;
-   float mov1 = y / iResolution.y / 0.2 + iGlobalTime;
-   float mov2 = x / iResolution.x / 0.2;
-   float c1 = abs(sin(mov1+iGlobalTime)/2.+mov2/2.-mov1-mov2+iGlobalTime);
-   float c2 = abs(sin(c1+sin(mov0/1000.+iGlobalTime)+sin(y/40.+iGlobalTime)+sin((x+y)/100.)*3.));
-   float c3 = abs(sin(c2+cos(mov1+mov2+c2)+cos(mov2)+sin(x/1000.)));
-   gl_FragColor = vec4( c1,c2,c3,1.0);
-}
-'''
+		shader = self.canvas.shader
+		shader.fs = header + code
+		if not shader.success:
+			print '! Shader compilation failed (GLSL)'
+			assert False
 
 class ShaderWidget(FloatLayout):
 
@@ -70,15 +56,20 @@ class ShaderWidget(FloatLayout):
 	def on_fs(self, instance, value):
 		self.shaderfn = value
 		self.time_last = os.path.getmtime(self.shaderfn)
+		self.utime_last = os.path.getmtime('utility.glf')
 		try:
-			value = Compiler(file(value, 'r').read().decode('utf-8'), False, False).code
+			compiler = Compiler(file(value, 'r').read().decode('utf-8'), False, False)
 		except:
 			print 'Shaderforth failure'
 			import traceback
 			traceback.print_exc()
 			return
-		print value
-		value = header + value
+		output = compiler.outcode
+		self.build_fbos(compiler)
+		for ep, code in output.items():
+			print '// !%s!' % ep
+			print code
+		value = header + output['main']
 
 		# set the fragment shader to our source code
 		shader = self.canvas.shader
@@ -89,15 +80,40 @@ class ShaderWidget(FloatLayout):
 			print 'Shader compilation failed (GLSL)'
 			#raise Exception('failed')
 
+	def build_fbos(self, compiler):
+		self.compiler = compiler
+		self.fbos = {}
+		for dest, src in compiler.passes:
+			if src in compiler.globals:
+				self.fbos[dest] = src
+				continue
+			with self.canvas:
+				fbo = self.fbos[dest] = RTT(compiler.outcode[src], size=compiler.dimensions.get(dest, Window.size))
+
 	def update_glsl(self, *largs):
+		for i, (name, fbo) in enumerate(self.fbos.items()):
+			glActiveTexture(GL_TEXTURE0 + 1)
+			fbo.texture.bind()
+			self.canvas[str(name)] = 1
+			for sfbo in self.fbos.values():
+				sfbo.canvas[str(name)] = 1
+			fbo.canvas['iGlobalTime'] = Clock.get_boottime()
+			fbo.canvas['iResolution'] = list(map(float, self.size)) + [0.0]
+			# This is needed for the default vertex shader.
+			fbo.canvas['projection_mat'] = Window.render_context['projection_mat']
+			fbo.bind()
+			fbo.canvas.draw()
+			fbo.release()
+			glActiveTexture(GL_TEXTURE0 + 1)
+			fbo.texture.bind()
 		self.canvas['iGlobalTime'] = Clock.get_boottime()
 		self.canvas['iResolution'] = list(map(float, self.size)) + [0.0]
 		# This is needed for the default vertex shader.
 		self.canvas['projection_mat'] = Window.render_context['projection_mat']
-
+		
 		mtime = os.path.getmtime(self.shaderfn)
-		if mtime != self.time_last:
-			#print 'foo!'
+		umtime = os.path.getmtime('utility.glf')
+		if mtime != self.time_last or umtime != self.utime_last:
 			self.on_fs(self, self.shaderfn)
 			self.time_last = mtime
 

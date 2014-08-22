@@ -8,8 +8,8 @@ soptions = null
 
 $(document).ready () ->
 	cvs = $('#cvs')[0]
-	cvs.width = cvs.style['width'] = 640
-	cvs.height = cvs.style['height'] = 480
+	cvs.width = cvs.style['width'] = 800
+	cvs.height = cvs.style['height'] = 450
 	ctx = cvs.getContext('webgl')
 	ctx.getExtension('OES_texture_float')
 
@@ -35,7 +35,7 @@ $(document).ready () ->
 	refresh()
 
 class Renderer
-	constructor: (@name, @target, @code, @dimensions=[640, 480]) ->
+	constructor: (@name, @target, @code, @dimensions=[800, 450]) ->
 		@texture = null
 		@textures = []
 		if @name == 'main'
@@ -117,9 +117,11 @@ class Renderer
 		ctx.vertexAttribPointer 0, 2, ctx.FLOAT, 0, 0, 0
 		ctx.enableVertexAttribArray(ctx.getAttribLocation @p, 'p')
 		ctx.useProgram(@p)
-		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), 640, 480, 0)
+		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), 800, 450, 0)
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iMouse'), mousepos[0], mousepos[1], mousestate[0], mousestate[1])
 		ctx.uniform1f(ctx.getUniformLocation(@p, 'iGlobalTime'), time)
+		date = new Date
+		ctx.uniform4f(ctx.getUniformLocation(@p, 'iDate'), date.getFullYear(), date.getMonth(), date.getDay(), date.getHours() * 60 * 60 + date.getMinutes() * 60 + date.getSeconds())
 
 		for name, [type, elem] of soptions
 			if type == 'bool'

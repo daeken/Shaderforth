@@ -129,13 +129,13 @@ flatops = {
 }
 glfuncs = dict(
 	dot=2, 
-	vec4=4, 
 	sin=1, 
 	abs=1, 
 	atan=1, 
 	atan2=2, 
 	cos=1, 
 	pow=2, 
+	exp=1, 
 	sqrt=1, 
 	mod=2, 
 	tan=1, 
@@ -156,7 +156,10 @@ glfuncs = dict(
 	ceil=1, 
 	floor=1, 
 	sign=1, 
-	texture2D=2
+	texture2D=2, 
+	log=1, 
+	log2=1, 
+	vec2=1, 
 )
 gltypes = dict(
 	dot='float', 
@@ -191,6 +194,7 @@ class Compiler(object):
 		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 		self.deps = {}
+		self.mainWords = {'main' : 'main'}
 
 		for name, atoms in self.words.items():
 			self.words[name] = self.compile(name, atoms)
@@ -205,14 +209,13 @@ class Compiler(object):
 
 		self.passes, eps = self.parsepasses()
 		eps.append('main')
+		for i, ep in enumerate(eps):
+			if len(self.words[ep][1]) == 0:
+				del eps[i]
 
 		self.outcode = {}
 		for ep in eps:
-			old = sys.stdout
-			sys.stdout = StringIO()
-			self.output(ep)
-			code = sys.stdout.getvalue()
-			sys.stdout = old
+			code = self.output(ep)
 			if minimize:
 				self.outcode[ep] = self.minshader(code)
 			else:
@@ -230,7 +233,11 @@ class Compiler(object):
 		code = re.sub(r'\s*(;|{|}|\(|\)|=|\+|-|\*|\/|\[|\]|,|\.|%|!|~|\?|:|<|>)\s*', r'\1', code)
 		return code.strip()
 
+	def emitnl(self, *args):
+		self.emitted += ' '.join(args) + '\n'
+
 	def output(self, main):
+		self.emitted = ''
 		indentlevel = [1]
 		operators = '+ - / * < > <= >= == != && ||'.split(' ')
 		precedence = {
@@ -324,21 +331,21 @@ class Compiler(object):
 				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
 		if self.shadertoy:
-			print '/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth'
-			print self.barecode.rstrip('\n')
-			print '*/'
-			print
+			self.emitnl('/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth')
+			self.emitnl(self.barecode.rstrip('\n'))
+			self.emitnl('*/')
+			self.emitnl()
 
 		for name, elems in self.structs.items():
-			print 'struct %s {' % self.rename(name)
+			self.emitnl('struct %s {' % self.rename(name))
 			for name, type in elems:
-				print '\t%s %s;' % (type.rename(), self.rename(name))
-			print '};'
+				self.emitnl('\t%s %s;' % (type.rename(), self.rename(name)))
+			self.emitnl('};')
 		for name, type in self.globals.items():
 			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
 				continue
 
-			print type.rename(), self.rename(name) + ';'
+			self.emitnl(type.rename(), self.rename(name) + ';')
 
 		required = [main]
 		checked = []
@@ -373,9 +380,14 @@ class Compiler(object):
 			effects = self.predeclare(effects)
 
 			if name == main:
-				name = 'main'
+				if name in self.mainWords:
+					pname = self.mainWords[name]
+				else:
+					pname = 'main'
+			else:
+				pname = name
 
-			print '%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if name != 'main' else name, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0])))
+			self.emitnl('%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -387,10 +399,12 @@ class Compiler(object):
 						off = 1
 					else:
 						off = 0
-					print '\t' * (indentlevel[0] - off) + line
+					self.emitnl('\t' * (indentlevel[0] - off) + line)
 				else:
-					print '\t' * indentlevel[0] + line + ';'
-			print '}'
+					self.emitnl('\t' * indentlevel[0] + line + ';')
+			self.emitnl('}')
+
+		return self.emitted
 
 	def predeclare(self, effects):
 		def vars_referenced(effect):
@@ -405,13 +419,15 @@ class Compiler(object):
 		decls = [[]]
 		inside = []
 		for effect in effects:
-			if effect[0] in ('if', 'while'):
+			if effect[0] in ('if', 'while', 'for'):
 				decls.append([])
 			elif effect[0] in ('else', 'elif'):
 				inside += decls.pop()
+				assert len(decls)
 				decls.append([])
 			elif effect[0] == 'endblock':
 				inside += decls.pop()
+				assert len(decls)
 			elif effect[0] == '=' and effect[1][0] == 'var':
 				decls[-1].append(effect[1][1])
 			refs = vars_referenced(effect)
@@ -556,16 +572,7 @@ class Compiler(object):
 				cur.append(token)
 
 		for name, tokens in words.items():
-			while True:
-				rewrite = False
-				for i, token in enumerate(tokens):
-					if token in macros:
-						tokens = tokens[:i] + macros[token] + tokens[i+1:]
-						rewrite = True
-						break
-				if not rewrite:
-					break
-			words[name] = tokens
+			words[name] = self.expandmacros(name, tokens, macros)
 
 		self.words = {}
 		locals, effects, localorder = self.compile('__globals', globals, pre=True)
@@ -582,6 +589,28 @@ class Compiler(object):
 
 		return words, wordtypes, macros, sdefs
 
+	def expandmacros(self, wname, tokens, macros):
+		def sub(atoms, deps):
+			i = 0
+			while i < len(atoms):
+				token = atoms[i]
+				if token in macros and token not in deps:
+					rep = rex(macros[token], deps + [token])
+					atoms = atoms[:i] + rep + atoms[i+1:]
+					i += len(rep)
+				else:
+					i += 1
+			return atoms
+		def rex(atoms, deps):
+			while True:
+				natoms = sub(atoms, deps)
+				if natoms == atoms:
+					return natoms
+				atoms = natoms
+
+		tokens = sub(tokens, [wname])
+		return tokens
+
 	def parsepasses(self):
 		self.dimensions = {}
 		locals, effects, localorder = self.compile('__passes', self.passes, pre=True)
@@ -592,6 +621,8 @@ class Compiler(object):
 			if effect[2][0] == 'var':
 				passes.append((effect[1][1], effect[2][1]))
 			else:
+				if effect[1][1] == 'sound-pass':
+					self.mainWords[effect[2][0]] = 'mainSound'
 				eps.append(effect[2][0])
 				passes.append((effect[1][1], effect[2][0]))
 		return passes, eps
@@ -682,8 +713,7 @@ class Compiler(object):
 			elif token == ']v':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(['array'] + temp)
-				self.avec()
+				self.rstack.push(self.vectorize(['array'] + temp))
 			elif token == ']m':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
@@ -696,15 +726,28 @@ class Compiler(object):
 			elif token == 'false':
 				self.rstack.push(False)
 			else:
-				print 'foo', token, self.rstack
-				print 'unknown token', token
+				print 'unknown token', token, self.rstack
 				raise Exception('Unknown token')
 
 		assert len(self.rstack) <= 1
 		if len(self.rstack) == 1:
 			self.effects.append(('return', self.rstack.pop()))
 
+		self.effects = self.vectorize(self.effects)
+		
 		return self.locals, self.effects, self.localorder
+
+	def vectorize(self, obj):
+		if isinstance(obj, list) and len(obj) > 0 and obj[0] == 'array':
+			self.rstack.push(map(self.vectorize, obj))
+			self.avec()
+			return self.rstack.pop()
+		elif isinstance(obj, tuple):
+			return tuple(map(self.vectorize, obj))
+		elif isinstance(obj, list):
+			return list(map(self.vectorize, obj))
+		else:
+			return obj
 
 	def block(self):
 		depth = 1
@@ -723,7 +766,6 @@ class Compiler(object):
 				depth -= 1
 				if depth == 0:
 					break
-
 		atoms = atoms[:-1]
 		if len(atoms) and atoms[0] == '(':
 			spec = []
@@ -828,7 +870,7 @@ class Compiler(object):
 		self.macrolocals[name] = self.rstack.pop()
 
 	def infertype(self, expr):
-		if isinstance(expr, tuple):
+		if isinstance(expr, tuple) or isinstance(expr, list):
 			if expr[0] == 'var':
 				name = expr[1]
 				if name in self.globals:
@@ -850,7 +892,17 @@ class Compiler(object):
 			elif expr[0].startswith('vec'):
 				return expr[0]
 			elif expr[0] == 'array':
-				return 'array'
+				types = map(self.infertype, expr[1:])
+				length = 0
+				for type in types:
+					if type.startswith('vec'):
+						length += int(type[3:])
+					elif type == 'float':
+						length += 1
+					else:
+						assert False
+
+				return 'vec%i' % length
 			elif expr[0] in gltypes:
 				return gltypes[expr[0]]
 			elif expr[0] in self.wordtypes:
@@ -1006,7 +1058,7 @@ class Compiler(object):
 		elif atom in self.words or atom in bwords:
 			return [atom]
 		else:
-			print atom
+			print 'Unknown atom to blockify', atom
 			assert False
 
 	@word('times')
@@ -1212,6 +1264,14 @@ class Compiler(object):
 		else:
 			self.rstack.push(('float', val))
 
+	@word('int')
+	def int(self):
+		val = self.rstack.pop()
+		if isinstance(val, float) or isinstance(val, int):
+			self.rstack.push(int(val))
+		else:
+			self.rstack.push(('int', val))
+
 	@word('neg')
 	def neg(self):
 		val = self.rstack.pop()
@@ -1234,6 +1294,21 @@ class Compiler(object):
 	def toggle(self):
 		var = self.rstack.pop()
 		self.options.append((var, 'toggle', None))
+
+	@word('recur')
+	def recur(self):
+		depth = self.rstack.pop()
+		_else = self.blockify(self.rstack.pop())
+		_if = self.blockify(self.rstack.pop())
+
+		if depth == 0:
+			self.atoms.insert(self.expandmacros(None, _else, self.macros))
+		else:
+			atoms = self.expandmacros(None, _if, self.macros)
+			for i, atom in enumerate(atoms):
+				if atom == 'recur':
+					atoms[i-1] = depth - 1
+			self.atoms.insert(atoms)
 
 def main(fn, shadertoy=None, minimize=None):
 	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')

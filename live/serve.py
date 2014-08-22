@@ -9,7 +9,8 @@ app.debug = True
 def compile():
 	old = sys.stdout
 	olde = sys.stderr
-	sys.stdout = sys.stderr = StringIO()
+	sys.stdout = StringIO()
+	# sys.stderr = sys.stdout
 	success = True
 	try:
 		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), False, False)
@@ -20,7 +21,7 @@ def compile():
 		traceback.print_exc()
 	messages = sys.stdout.getvalue()
 	sys.stdout = old
-	sys.stderr = olde
+	#sys.stderr = olde
 	if success:
 		shaders = compiler.outcode
 		globals = dict((k, str(v)) for k, v in compiler.globals.items())
