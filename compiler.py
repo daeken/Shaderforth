@@ -180,9 +180,9 @@ btypes = 'void int float bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bv
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
-	def __init__(self, code, shadertoy=False, minimize=False):
+	def __init__(self, code, utility, shadertoy=False, minimize=False):
 		self.barecode = code
-		self.code = file('utility.glf', 'r').read().decode('utf-8') + code
+		self.code = utility + code
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -1313,7 +1313,8 @@ class Compiler(object):
 			self.atoms.insert(atoms)
 
 def main(fn, shadertoy=None, minimize=None):
-	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), shadertoy == '--shadertoy', minimize == '--minimize')
+	utility = file('utility.glf', 'r').read().decode('utf-8')
+	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, shadertoy == '--shadertoy', minimize == '--minimize')
 	for name, code in compiler.outcode.items():
 		print >>sys.stderr, '// Shader', name
 		print code

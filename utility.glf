@@ -73,13 +73,13 @@
 
 ( Distance Field Utilities )
 :m gradient ( p f )
-	[ 0.001 0 ] =h
+	[ eps 0 ] =h
 	p *f =>v
 	[
 		p h + *f  p h - *f -
 		p h .yx + *f  p h .yx - *f -
 	] 2 h .x * / length =>g
-	v g abs /
+	v abs g /
 ;
 
 ( Color Operations )

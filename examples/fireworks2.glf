@@ -17,12 +17,12 @@
 	]m
 ;
 
-:m res-scale iResolution .xy / 0.5 - 2 * [ 1 iResolution .y.x / ]v * ;
+:m res-scale iResolution .xy / 0.5 - 2 * [ 1 iResolution .y.x / ] * ;
 
-:m rotate ( p axis angle ) [ p 1 ]v axis angle rotationmat * .xyz ;
+:m rotate ( p axis angle ) [ p 1 ] axis angle rotationmat * .xyz ;
 
 :m sphere ( p s ) p length s - ;
-:m torus ( p t ) [ p .xy length t .x - p .z ]v length t .y - ;
+:m torus ( p t ) [ p .xy length t .x - p .z ] length t .y - ;
 : box ( p:vec3 b:vec3 -> float )
 	p abs b - =d
 	d \max 0 min
@@ -38,9 +38,9 @@
 
 :m time iGlobalTime ;
 
-:m tx ( p t ) p [ t 0 0 ]v + ;
-:m ty ( p t ) p [ 0 t 0 ]v + ;
-:m tz ( p t ) p [ 0 0 t ]v + ;
+:m x+ ( p t ) p [ t 0 0 ] + ;
+:m y+ ( p t ) p [ 0 t 0 ] + ;
+:m z+ ( p t ) p [ 0 0 t ] + ;
 
 :struct hit
 	@float =distance
@@ -56,30 +56,23 @@
 	@vec3 =color
 ;
 
-:m trotate [ 0.4 1.1 1.7 ]v time rotate ;
+:m terrain ( p )
+	 p .y p sin .x.z * 2 - -
+;
 
+: derive-pos ( p:vec3 v:vec3 a:vec3 t:float -> vec3 )
+	p v t * +
+	a 2 / t t * * +
+;
+
+:m gravity [ 0 1 0 ] ;
+
+:m trotate [ 0.4 1.1 1.7 ] time rotate ;
 : scene ( p:vec3 -> hit )
-	p trotate =p
-
+	( p trotate =p )
 	[
-		( [ p [ time sin 1.8 * 0 3 ]v + [ 2 2 0 ]v box #0 ] hit ) ( reflective backplane )
-		[ p trotate [ 0.2 0.5 0.6 ]v + [ 0.5 0.2 ]v torus #1 ] hit
-		[ p trotate [ 0.2 0.5 0.6 time sin 2 * + ]v + 0.25 sphere #2 ] hit
-		[
-			[
-				[
-					p [ 0.4 0.1 0.1 ]v box
-					p [ 0.1 0.4 0.1 ]v box
-					p [ 0.1 0.1 0.4 ]v box
-				] union
-				p [ 0.3 0.3 0.3 ]v box
-			] subtract
-		#3 ] hit
-		[ [
-			p [ 0.5 0.1 0.1 ]v box
-			p [ 0.1 0.5 0.1 ]v box
-			p [ 0.1 0.1 0.5 ]v box
-		] union #4 ] hit
+		[ p terrain #0 ] hit
+		[ p [ -5 2 0 ] [ 1 -4 0 ] gravity time 10 mod derive-pos + 30 z+ 0.25 sphere #1 ] hit
 	] hitunion
 ;
 
@@ -92,13 +85,11 @@
 	@float =refraction
 ;
 
-: get-material ( id:int -> material )
+: get-material ( id:int pos:vec3 -> material )
 	[
-		#0 [ [ 1 1 1 1 ]v 0 0.3 10 -1 0  ] material
-		#1 [ [ 1 0 0 0.8 ]v 0.2 0.8 30 0.9 1.333 ] material
-		#2 [ [ 1 0 1 1 ]v 0.2 0.7 30 1 0   ] material
-		#3 [ [ 1 1 1 1 ]v 0.2 1 10 1.2 2.419 ] material
-		  [ [ 1 1 1 1 ]v 0.2 1 10 1.2 5   ] material
+		#0 [ [ 0 1 0 1 ] 1 1 0 0 0  ] material
+		#1 [ [ 1 0 1 1 ] .5 1 100 200 0  ] material
+		   [ [ 1 1 1 1 ] 0.2 1 10 1.2 5   ] material
 	] id choose
 ;
 
@@ -106,42 +97,42 @@
 
 :m getnormal ( p )
 	[
-		p eps     tx scene .distance
-		p eps neg tx scene .distance -
-		p eps     ty scene .distance
-		p eps neg ty scene .distance -
-		p eps     tz scene .distance
-		p eps neg tz scene .distance -
-	]v normalize
+		p eps     x+ scene .distance
+		p eps neg x+ scene .distance -
+		p eps     y+ scene .distance
+		p eps neg y+ scene .distance -
+		p eps     z+ scene .distance
+		p eps neg z+ scene .distance -
+	] normalize
 ;
 
-gl_FragCoord .xy 2 * iResolution .xy - iResolution .y / =pos
+iResolution frag->position =pos
 
 3 =>focus
-:m far 20 ;
-:m close 0.01 ;
+:m far 100 ;
+:m close .1 ;
 
-[ 0 0 5 ]v =origin
-[ 0 0 0 ]v =>ct
+[ 0 0 5 ] =origin
+[ 0 0 0 ] =>ct
 
 ct origin - normalize =>cd
-[ 0 0.5 0 ]v =cu
+[ 0 0.5 0 ] =cu
 cd cu cross =>cs
 cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
-[ 0 0 0 ]v =c
+[ 0 0 0 ] =c
 
 : shade ( cur:marched normal:vec3 level:float -> vec4 )
 	cur .pos =>ray
 
-	[ 0 8 0 ]v =>lightpos
-	[ 1 1 1 ]v =>lightcolor
+	[ 0 8 0 ] =>lightpos
+	[ 1 1 1 ] =>lightcolor
 	lightpos ray - normalize =ivec
 	ivec normal dot 0 max =incidence
 	lightcolor incidence * =>diffuse
 	0.1 =>ambient
 
-	cur .material get-material =mat
+	cur .material.pos get-material =mat
 
 	0 =specular
 	{
@@ -150,7 +141,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 		lightpos ray - length / =specular
 	} mat .specular 0 != incidence 0 > and when
 
-	[ mat .color .rgb.a * diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * mat .reflection ]v
+	[ mat .color .rgb.a * diffuse mat .diffuse * ambient mat .ambient * + specular + * level mat .reflection pow * mat .reflection ]
 ;
 
 : skip-bulk ( ray:vec3 dir:vec3 mat:int -> vec3 )
@@ -165,7 +156,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 : march ( ray:vec3 dir:vec3 -> marched )
 	ray =origin
 	0 =dist
-	[ 0 0 0 ]v =color
+	[ 0 0 0 ] =color
 	1 =trans
 	{
 		ray scene =cur
@@ -174,7 +165,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
 		{ break } dist far >= when
 
-		cur .material get-material =mat
+		cur .material ray get-material =mat
 		{
 			{ break }
 			{
@@ -193,7 +184,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 				dir normal mat .refraction refract =dir
 			} mat .refraction 0 == if
 		} cur .distance close < when
-	} #50 times
+	} #200 times
 	[
 		dist far cur .distance close < select
 		cur .distance
@@ -207,7 +198,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 : march-one ( ray:vec3 dir:vec3 -> vec3 )
 	ray =origin
 	0 =dist
-	[ 0 0 0 ]v =color
+	[ 0 0 0 ] =color
 	{
 		ray scene =cur
 		dist cur .distance + far min =dist
@@ -215,7 +206,7 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 
 		{ break } dist far >= when
 		{ break } cur .distance close < when
-	} #20 times
+	} #200 times
 	[
 		dist far cur .distance close < select
 		cur .distance
@@ -255,4 +246,4 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 	} cur .distance far < if
 } iters times
 
-[ c 1 ]v =gl_FragColor
+[ c 1 ] =gl_FragColor

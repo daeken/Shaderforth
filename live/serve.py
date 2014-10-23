@@ -5,6 +5,9 @@ sys.path = [os.path.abspath(__file__)[:-14]] + sys.path
 from compiler import Compiler
 app = Flask(__name__)
 app.debug = True
+import logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 def compile():
 	old = sys.stdout
@@ -12,8 +15,9 @@ def compile():
 	sys.stdout = StringIO()
 	# sys.stderr = sys.stdout
 	success = True
+	utility = file('utility.glf', 'r').read().decode('utf-8')
 	try:
-		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), False, False)
+		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, False, False)
 	except:
 		import traceback
 		success = False
@@ -60,4 +64,4 @@ def coffee(name=None):
 
 if __name__=='__main__':
 	fn = sys.argv[1]
-	app.run()
+	app.run(host='0.0.0.0')
