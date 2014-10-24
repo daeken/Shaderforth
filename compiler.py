@@ -123,7 +123,7 @@ bwords = {
 	'==' : (2, None), 
 	'!=' : (2, None), 
 }
-flatops = {
+foldops = {
 	'+' : lambda a, b: a + b, 
 	'-' : lambda a, b: a - b, 
 	'*' : lambda a, b: a * b, 
@@ -629,6 +629,29 @@ class Compiler(object):
 				passes.append((effect[1][1], effect[2][0]))
 		return passes, eps
 
+	def fold_constants(self, op, operands):
+		def eligible(val):
+			if isinstance(val, float) or isinstance(val, int):
+				return True
+			elif isinstance(val, list):
+				return False not in map(eligible, val if len(val) < 1 or val[0] != 'array' else val[1:])
+			return False
+
+		def fold(a, b):
+			if isinstance(a, list):
+				if isinstance(b, list):
+					assert len(a) == len(b)
+					return ['array'] + map(lambda i: foldops[op](a[i], b[i]), xrange(1, len(a)))
+				else:
+					return ['array'] + map(lambda x: foldops[op](x, b), a[1:])
+			else:
+				return foldops[op](a, b)
+
+		if eligible(operands):
+			return reduce(fold, operands)
+		else:
+			return tuple([op] + operands)
+
 	def compile(self, name, atoms, pre=False):
 		Compiler.compiling = name
 		self.atoms = Code(atoms)
@@ -655,14 +678,10 @@ class Compiler(object):
 				consumes, fn = bwords[token]
 				if fn != None:
 					fn(self, *[self.atoms.consume() for i in xrange(consumes)][::-1])
-				elif token in flatops:
+				elif token in foldops:
 					operands = [self.rstack.pop() for i in xrange(consumes)][::-1]
 					
-					if False not in [isinstance(operand, float) for operand in operands] or \
-					   False not in [isinstance(operand, int) for operand in operands]:
-						self.rstack.push(flatops[token](*operands))
-					else:
-						self.rstack.push(tuple([token] + operands))
+					self.rstack.push(self.fold_constants(token, operands))
 				else:
 					self.rstack.push(tuple([token] + [self.rstack.pop() for i in xrange(consumes)][::-1]))
 			elif len(token) > 1 and token[0] == '@':
@@ -695,6 +714,8 @@ class Compiler(object):
 					self.reduce(self.block())
 				else:
 					self.reduce(token[1:])
+			elif len(token) > 3 and token.startswith('$['):
+				self.range(token[2:-1].split(':'))
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -1311,6 +1332,23 @@ class Compiler(object):
 				if atom == 'recur':
 					atoms[i-1] = depth - 1
 			self.atoms.insert(atoms)
+
+	def range(self, elems):
+		incl = True in ['+' in elem for elem in elems]
+		elems = map(float, elems)
+		val = ['array']
+		if len(elems) == 1:
+			start, max, step = 0., elems[0], 1.
+		elif len(elems) == 2:
+			(start, max), step = elems, 1.
+		else:
+			start, max, step = elems
+
+		while (not incl and start < max) or (incl and start <= max):
+			val.append(start)
+			start += step
+
+		self.rstack.push(val)
 
 def main(fn, shadertoy=None, minimize=None):
 	utility = file('utility.glf', 'r').read().decode('utf-8')
