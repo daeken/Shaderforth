@@ -38,7 +38,6 @@ def compile():
 		passes = []
 		dimensions = {}
 		options = []
-	print options
 	return success, shaders, globals, passes, dimensions, options, messages
 
 @app.route('/')

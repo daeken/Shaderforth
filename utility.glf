@@ -69,17 +69,17 @@
 :m p+ ( p v ) p cart->polar v + polar->cart ;
 :m p* ( p v ) p cart->polar v * polar->cart ;
 
-:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2 * 1 - [ iResolution .x.y / 1 ] * ;
+:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2 * 1 - [ resolution .x.y / 1 ] * ;
 
 ( Distance Field Utilities )
-:m gradient ( p f )
+:m gradient ( f p )
 	[ eps 0 ] =h
 	p *f =>v
 	[
 		p h + *f  p h - *f -
 		p h .yx + *f  p h .yx - *f -
 	] 2 h .x * / length =>g
-	v abs g /
+	v g abs /
 ;
 
 ( Color Operations )
@@ -87,3 +87,5 @@
     hsv .x 60 / [ 0 4 2 ] + 6 mod 3 - abs 1 - 0 1 clamp =>rgb
     [ 1 1 1 ] rgb hsv .y mix hsv .z *
 ;
+
+:m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;

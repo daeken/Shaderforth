@@ -1,0 +1,89 @@
+# [PackageDev] target_format: plist, ext: tmLanguage
+---
+name: Shaderforth
+scopeName: source.shaderforth
+fileTypes: [glf]
+uuid: 3f3a3f53-00ee-4b3f-afb8-78cdf3761a3b
+
+patterns:
+- comment: comment
+  name: comment.shaderforth
+  begin: (?!\s)\((?=\s)
+  end: (?!\s)\)(?=\s)
+  patterns:
+    - include: comment.shaderforth
+- comment: numbers
+  name: constant.numeric.shaderforth
+  match: (?!\s)#?-?+?([0-9]+|[0-9]+\.[0-9]*|\.[0-9]+)(?=\s)
+- comment: words
+  name: meta.function.shaderforth
+  begin: (?!\s)(:)\s+([^\s]+)\s+(\(\s+([^\)]+\s+)?\))
+  beginCaptures:
+    '2':
+      name: storage.type.function.shaderforth
+    '3':
+      name: keyword.shaderforth
+    '4':
+      name: entity.name.function.shaderforth
+  end: (?!\s);(?=\s)
+  endCaptures:
+    '1':
+      name: storage.type.function.shaderforth
+  patterns:
+    - include: $self
+- comment: macros
+  name: meta.function.shaderforth
+  begin: (?!\s)(:m|:globals|:passes)\s+([^\s]+)(\s+\(\s+([^\)]+\s+)?\))?
+  beginCaptures:
+    '2':
+      name: storage.type.function.shaderforth
+    '3':
+      name: keyword.shaderforth
+    '4':
+      name: entity.name.function.shaderforth
+  end: (?!\s);(?=\s)
+  endCaptures:
+    '1':
+      name: storage.type.function.shaderforth
+  patterns:
+    - include: $self
+- comment: arrays
+  name: meta.array.shaderforth
+  begin: (?!\s)\[(?=\s)
+  beginCaptures:
+    '0':
+      name: storage.type.array.shaderforth
+  endCaptures:
+    '0':
+      name: storage.type.array.shaderforth
+  end: (?!\s)\][mv]?(?=\s)
+  patterns:
+    - include: $self
+- comment: blocks
+  name: meta.block.shaderforth
+  begin: (?!\s)[\\/]?\{(\s+\(\s+([^\)]+\s+)?\))?(?=\s)
+  beginCaptures:
+    '0':
+      name: storage.type.block.shaderforth
+    '1':
+      name: entity.name.function.shaderforth
+  endCaptures:
+    '0':
+      name: storage.type.block.shaderforth
+  end: (?!\s)\}(?=\s)
+  patterns:
+    - include: $self
+
+- comment: operations
+  name: keyword.shaderforth
+  match: (?!\s)[\\/*/+-<>=~!@#$%^&|?]+(?=\s)
+
+- comment: named
+  name: keyword.shaderforth
+  match: (=>|=|\.|&|\\|/|\*)([a-zA-Z0-9\-_~!@#$%^&*()\[\]+=+<>]+)
+  captures:
+    '1':
+      name: keyword.shaderforth
+    '2':
+      name: storage.type.name.shaderforth
+...

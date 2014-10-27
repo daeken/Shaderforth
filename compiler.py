@@ -716,6 +716,9 @@ class Compiler(object):
 					self.reduce(token[1:])
 			elif len(token) > 3 and token.startswith('$['):
 				self.range(token[2:-1].split(':'))
+			elif len(token) > 1 and token[0] == '!' and token != '!=':
+				self.dup()
+				self.atoms.insert([token[1:]])
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -1272,7 +1275,12 @@ class Compiler(object):
 
 	@word('size')
 	def size(self):
-		self.rstack.push(len(self.rstack.pop()))
+		arr = self.rstack.pop()
+		if len(arr) and arr[0] == 'array':
+			off = 1
+		else:
+			off = 0
+		self.rstack.push(float(len(arr) - off))
 
 	@word('sq')
 	def sq(self):
@@ -1349,6 +1357,11 @@ class Compiler(object):
 			start += step
 
 		self.rstack.push(val)
+
+	@word('upto')
+	def upto(self):
+		top = self.rstack.pop()
+		self.rstack.push(['array'] + list(map(float, range(int(top)))))
 
 def main(fn, shadertoy=None, minimize=None):
 	utility = file('utility.glf', 'r').read().decode('utf-8')
