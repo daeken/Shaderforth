@@ -1,4 +1,10 @@
+from decimal import *
 import re
+
+float_type = Decimal
+old_float = float
+def float(val):
+	return Decimal(val)
 
 def depcopy(deps):
 	return dict((k, list(v)) for k, v in deps.items())
@@ -265,6 +271,10 @@ class Compiler(object):
 					return 'true'
 				elif atom is False:
 					return 'false'
+				elif isinstance(atom, float_type):
+					atom = unicode(atom)
+					if '.' not in atom:
+						return atom + '.'
 				return unicode(atom)
 
 			return '(%s)' % structure(atom)
@@ -274,6 +284,10 @@ class Compiler(object):
 					return 'true'
 				elif atom is False:
 					return 'false'
+				elif isinstance(atom, float_type):
+					atom = unicode(atom)
+					if '.' not in atom:
+						return atom + '.'
 				return unicode(atom)
 
 			if atom[0] in operators:
@@ -389,7 +403,7 @@ class Compiler(object):
 			else:
 				pname = name
 
-			self.emitnl('%s %s(%s) {' % (self.rename(self.wordtypes[name][1]), self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
+			self.emitnl('%s %s(%s) {' % (self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -631,23 +645,25 @@ class Compiler(object):
 
 	def fold_constants(self, op, operands):
 		def eligible(val):
-			if isinstance(val, float) or isinstance(val, int):
+			if isinstance(val, float_type) or isinstance(val, int):
 				return True
 			elif isinstance(val, list):
-				return False not in map(eligible, val if len(val) < 1 or val[0] != 'array' else val[1:])
+				return True#return False not in map(eligible, val if len(val) < 1 or val[0] != 'array' else val[1:])
 			return False
 
 		def fold(a, b):
 			if isinstance(a, list):
 				if isinstance(b, list):
 					assert len(a) == len(b)
-					return ['array'] + map(lambda i: foldops[op](a[i], b[i]), xrange(1, len(a)))
-				else:
+					return ['array'] + map(lambda i: self.fold_constants(op, [a[i], b[i]]), xrange(1, len(a)))
+				elif False not in map(eligible, a):
 					return ['array'] + map(lambda x: foldops[op](x, b), a[1:])
+				else:
+					return tuple([op, a, b])
 			else:
 				return foldops[op](a, b)
 
-		if eligible(operands):
+		if False not in map(eligible, operands):
 			return reduce(fold, operands)
 		else:
 			return tuple([op] + operands)
@@ -1290,7 +1306,7 @@ class Compiler(object):
 	@word('float')
 	def float(self):
 		val = self.rstack.pop()
-		if isinstance(val, float) or isinstance(val, int):
+		if isinstance(val, float_type) or isinstance(val, int):
 			self.rstack.push(float(val))
 		else:
 			self.rstack.push(('float', val))
@@ -1298,7 +1314,7 @@ class Compiler(object):
 	@word('int')
 	def int(self):
 		val = self.rstack.pop()
-		if isinstance(val, float) or isinstance(val, int):
+		if isinstance(val, float_type) or isinstance(val, int):
 			self.rstack.push(int(val))
 		else:
 			self.rstack.push(('int', val))
@@ -1306,7 +1322,7 @@ class Compiler(object):
 	@word('neg')
 	def neg(self):
 		val = self.rstack.pop()
-		if isinstance(val, float) or isinstance(val, int):
+		if isinstance(val, float_type) or isinstance(val, int):
 			self.rstack.push(-val)
 		else:
 			self.rstack.push(('-', val))
