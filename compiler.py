@@ -1,10 +1,20 @@
 from decimal import *
 import re
 
-float_type = Decimal
+def format_float(tval):
+	val = str(Decimal(tval))
+	if '.' not in val:
+		return val + '.'
+	elif val.startswith('0.'):
+		return val[1:]
+	elif val.startswith('-0.'):
+		return '-' + val[2:]
+	else:
+		return val
+
+getcontext().prec = 5
 old_float = float
-def float(val):
-	return Decimal(val)
+float = Decimal
 
 def depcopy(deps):
 	return dict((k, list(v)) for k, v in deps.items())
@@ -247,7 +257,7 @@ class Compiler(object):
 	def output(self, main):
 		self.emitted = ''
 		indentlevel = [1]
-		operators = '+ - / * < > <= >= == != && ||'.split(' ')
+		operators = 'neg + - / * < > <= >= == != && ||'.split(' ')
 		precedence = {
 			'+'  : 2, 
 			'-'  : 2, 
@@ -264,37 +274,46 @@ class Compiler(object):
 			'.'  : 10, 
 			'?:' : 10, 
 			'[]' : 10,
+			'neg' : 10, 
 		}
-		def paren(atom, op=None):
+		def minprec(atom, op=None):
+			if not isinstance(atom, tuple) or len(atom) == 0 or atom[0] not in operators:
+				return 1000
+			tmin = min([precedence[atom[0]]] + map(lambda x: minprec(x, atom[0]), atom))
+			if op is not None and tmin < precedence[op]:
+				return 1000
+			return tmin
+		def paren(atom, op=None, left=None):
+			need = True
+			right_div_sub = left == False and op in '-/'
 			if not isinstance(atom, tuple):
 				if atom is True:
 					return 'true'
 				elif atom is False:
 					return 'false'
-				elif isinstance(atom, float_type):
-					atom = unicode(atom)
-					if '.' not in atom:
-						return atom + '.'
+				elif isinstance(atom, float):
+					return format_float(atom)
 				return unicode(atom)
-
-			return '(%s)' % structure(atom)
+			elif atom[0] not in operators or op is None:
+				need = False
+			elif (minprec(atom) >= precedence[op] and not right_div_sub) or (minprec(atom) > precedence[op] and right_div_sub):
+				need = False
+			return '(%s)' % structure(atom) if need else structure(atom)
 		def structure(atom):
 			if not isinstance(atom, tuple):
 				if atom is True:
 					return 'true'
 				elif atom is False:
 					return 'false'
-				elif isinstance(atom, float_type):
-					atom = unicode(atom)
-					if '.' not in atom:
-						return atom + '.'
+				elif isinstance(atom, float):
+					return format_float(atom)
 				return unicode(atom)
 
 			if atom[0] in operators:
-				if len(atom) == 2:
-					return '%s %s' % (atom[0], paren(atom[1], atom[0]))
+				if atom[0] == 'neg':
+					return '-%s' % paren(atom[1], 'neg')
 				else:
-					return '%s %s %s' % (paren(atom[1], atom[0]), atom[0], paren(atom[2], atom[0]))
+					return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
 			elif atom[0] == '=':
 				if atom[2] is None:
 					return '%s' % structure(atom[1])
@@ -645,13 +664,14 @@ class Compiler(object):
 
 	def fold_constants(self, op, operands):
 		def eligible(val):
-			if isinstance(val, float_type) or isinstance(val, int):
+			if isinstance(val, float) or isinstance(val, int):
 				return True
 			elif isinstance(val, list):
 				return True#return False not in map(eligible, val if len(val) < 1 or val[0] != 'array' else val[1:])
 			return False
 
 		def fold(a, b):
+			getcontext().prec = 5
 			if isinstance(a, list):
 				if isinstance(b, list):
 					assert len(a) == len(b)
@@ -1306,7 +1326,7 @@ class Compiler(object):
 	@word('float')
 	def float(self):
 		val = self.rstack.pop()
-		if isinstance(val, float_type) or isinstance(val, int):
+		if isinstance(val, float) or isinstance(val, int):
 			self.rstack.push(float(val))
 		else:
 			self.rstack.push(('float', val))
@@ -1314,7 +1334,7 @@ class Compiler(object):
 	@word('int')
 	def int(self):
 		val = self.rstack.pop()
-		if isinstance(val, float_type) or isinstance(val, int):
+		if isinstance(val, float) or isinstance(val, int):
 			self.rstack.push(int(val))
 		else:
 			self.rstack.push(('int', val))
@@ -1322,10 +1342,10 @@ class Compiler(object):
 	@word('neg')
 	def neg(self):
 		val = self.rstack.pop()
-		if isinstance(val, float_type) or isinstance(val, int):
+		if isinstance(val, float) or isinstance(val, int):
 			self.rstack.push(-val)
 		else:
-			self.rstack.push(('-', val))
+			self.rstack.push(('neg', val))
 
 	@word('drop')
 	def drop(self):
