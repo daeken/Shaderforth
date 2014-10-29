@@ -89,3 +89,11 @@
 ;
 
 :m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;
+
+( Array Operations )
+:m multi2 ( arr )
+	[ arr /{ ( x ) arr /{ ( y ) [ x y ] } flatten } flatten ]
+;
+:m multi3 ( arr )
+	[ arr /{ ( x ) arr /{ ( y ) arr /{ ( z ) [ x y z ] } flatten } flatten } flatten ]
+;
