@@ -2,7 +2,7 @@
 ---
 name: Shaderforth
 scopeName: source.shaderforth
-fileTypes: [glf]
+fileTypes: [sfr]
 uuid: 3f3a3f53-00ee-4b3f-afb8-78cdf3761a3b
 
 patterns:
@@ -80,7 +80,7 @@ patterns:
 
 - comment: named
   name: keyword.shaderforth
-  match: (=>|=|\.|&|\\|/|\*)([a-zA-Z0-9\-_~!@#$%^&*()\[\]+=+<>]+)
+  match: (=>|=|\.|&|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&*()\[\]+=+<>]+)
   captures:
     '1':
       name: keyword.shaderforth

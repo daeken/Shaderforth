@@ -34,9 +34,9 @@
 
 : slit ( p:vec2 r:float i:float -> float )
 	{ ( rp )
-			rp [ r 0 ]v +
+			rp [ r 0 ] +
 			.02
-			[ .05 .01 ]v
+			[ .05 .01 ]
 		roundbox
 	} p i .25 + tau * rotate
 ;
@@ -49,16 +49,16 @@
 	+ =secondpos
 
 	[
-		[ p .45 secondpos slit slitcolor ]v
-		[ p .25 minutepos slit slitcolor ]v
-		[ p .1 hourpos slit slitcolor ]v
-		[ p .015 circle 1 1 1 ]v
+		[ p .45 secondpos slit slitcolor ]
+		[ p .25 minutepos slit slitcolor ]
+		[ p .1 hourpos slit slitcolor ]
+		[ p .015 circle 1 1 1 ]
 	] { .x } amin
 ;
 
 :m texture ( d p )
 	p distance-field .yzw =mat
-	[ d neg 30 * 0 1 clamp mat * ]v
+	[ d neg 30 * 0 1 clamp mat * ]
 ;
 
 :m maxtoff .01 ;

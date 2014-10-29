@@ -4,7 +4,7 @@
 <dict>
 	<key>fileTypes</key>
 	<array>
-		<string>glf</string>
+		<string>sfr</string>
 	</array>
 	<key>name</key>
 	<string>Shaderforth</string>
@@ -217,7 +217,7 @@
 			<key>comment</key>
 			<string>named</string>
 			<key>match</key>
-			<string>(=&gt;|=|\.|&amp;|\\|/|\*)([a-zA-Z0-9\-_~!@#$%^&amp;*()\[\]+=+&lt;&gt;]+)</string>
+			<string>(=&gt;|=|\.|&amp;|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&amp;*()\[\]+=+&lt;&gt;]+)</string>
 			<key>name</key>
 			<string>keyword.shaderforth</string>
 		</dict>

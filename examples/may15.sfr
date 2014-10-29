@@ -11,14 +11,14 @@
 	a 2 / t t * * +
 ;
 
-:m gravity [ 0 -0.3 ]v ;
+:m gravity [ 0 -0.3 ] ;
 
 :m noise ( s )
 	time 100 * s 211 * + gl_FragCoord .x 1489 * cos gl_FragCoord .y 1979 * cos + * sin 1 + 2 /
 ;
 
 : smoke-trail ( ltime:float duration:float origin:vec2 fp:vec2 )
-	[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ]v 10 / dup noise * =off
+	[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ] 10 / dup noise * =off
 	origin fp op off - closest-point-line =lp
 	lp op - length =d
 	1 lp fp - length origin fp - length / -
@@ -29,7 +29,7 @@
 
 	off length noise 0.3 * 1 + =gn
 	0.1 d - 0 1.0 clamp 5 / r * gn * 0 1.0 clamp =grey
-	[ grey dup dup ]v fragcolor + =fragcolor
+	[ grey dup dup ] fragcolor + =fragcolor
 ;
 
 : spark ( ltime:float origin:vec2 vel:vec2 dur:float color:vec3 dia:float )
@@ -65,7 +65,7 @@
 			[
 				i float ai * ltime +
 				0.4 ltime 2179 * i #1 + float 2287 * ltime + sin 100 * + sin 0.03 * +
-			]v polar->cart
+			] polar->cart
 			ltime 571 * sin 0.5 * 3 +
 			color
 			0.03
@@ -73,9 +73,9 @@
 	} #10 times
 
 	{
-		[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ]v 10 / dup noise * =off
+		[ ltime gl_FragCoord .x + 1187 * sin ltime gl_FragCoord .y + 1447 * sin ] 10 / dup noise * =off
 		1 origin op - off - length - 0 1.0 clamp 15 / 2 time ltime - - * off length noise * =grey
-		[ grey dup dup ]v fragcolor + =fragcolor
+		[ grey dup dup ] fragcolor + =fragcolor
 	} time ltime - 2 <= when
 ;
 
@@ -83,7 +83,7 @@
 	3 =fuse
 	ltime 389 * sin 0.03 * 1.1 + =speed
 
-	[ xvel speed ]v =vel
+	[ xvel speed ] =vel
 
 	time ltime - =>t
 
@@ -96,7 +96,7 @@
 	t fuse <= if
 ;
 
-gl_FragCoord .xy iResolution .xy / dup =np 2 * 1 - 1.5 * [ 1 iResolution .y.x / ]v * =op
+gl_FragCoord .xy iResolution .xy / dup =np 2 * 1 - 1.5 * [ 1 iResolution .y.x / ] * =op
 
 [ 0 0 0 ] =fragcolor
 
@@ -108,14 +108,14 @@ gl_FragCoord .xy iResolution .xy / dup =np 2 * 1 - 1.5 * [ 1 iResolution .y.x / 
 
 	{
 			it
-			[ it 3253 * sin 0.25 * -1.5 ]v
+			[ it 3253 * sin 0.25 * -1.5 ]
 			it 709 * sin 0.2 *
 			5 it 2311 * sin 1 + 5 2.0 / * + int
 			[
 				it 197 * 360 mod
 				it 2267 * sin abs
 				0.8
-			]v hsv->rgb
+			] hsv->rgb
 		firework
 	} it 1493 * sin 0.95 > it 0 >= and when
 } steps buffertime * int times

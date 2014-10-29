@@ -778,10 +778,6 @@ class Compiler(object):
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
 				self.rstack.push(['array'] + temp)
-			elif token == ']v':
-				temp = self.rstack.list
-				self.rstack = self.sstack.pop()
-				self.rstack.push(self.vectorize(['array'] + temp))
 			elif token == ']m':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()

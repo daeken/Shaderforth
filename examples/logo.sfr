@@ -11,10 +11,10 @@
 	anim =t
 	[
 			c .xy 1 t - *
-			[ t pi * -1 * 0 ]v
+			[ t pi * -1 * 0 ]
 		p+
 		c .z t 2.5 * 1 + *
-	]v
+	]
 ;
 
 : p-circle ( p:vec2 c:vec3 -> float )
@@ -33,7 +33,7 @@
 	[ v .xy a rotate-deg v .z ]
 ;
 
-iResolution frag->position [ 1.2 -1.2 ]v * =p
+iResolution frag->position [ 1.2 -1.2 ] * =p
 
 : distance-field ( p:vec2 -> float )
 	{

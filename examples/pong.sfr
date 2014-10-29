@@ -29,15 +29,15 @@
 ;
 
 :m enemy-position
-	[ .85 screen-width * cur .y ]v
+	[ .85 screen-width * cur .y ]
 ;
 
 :m player-position
-	[ -.85 screen-width * iMouse .y ]v
+	[ -.85 screen-width * iMouse .y ]
 ;
 
-:m paddle-size [ .05 .15 ]v ;
-:m ball-size [ .05 .05 ]v ;
+:m paddle-size [ .05 .15 ] ;
+:m ball-size [ .05 .05 ] ;
 
 : paddle-collide? ( ball:vec2 paddle:vec2 -> bool )
 	ball paddle - abs =diff
@@ -62,9 +62,9 @@
 			[
 				-1 1 collide select
 				-1 1 1 pos .y abs - .05 <= select
-			]v
+			]
 		* =dir
-		[ pos dir ]v
+		[ pos dir ]
 	} {
 		[
 			0 0
@@ -74,18 +74,18 @@
 				.01
 				time 127 * sin dup abs /
 			*
-		]v
+		]
 	} time .1 > cur .x abs 1.5 < and if =gl_FragColor
 ;
 
-:m cur statebuffer [ 0 0 ]v texture2D ;
+:m cur statebuffer [ 0 0 ] texture2D ;
 
 iResolution frag->position =p
 
 : distance-field ( p:vec2 -> float )
 	cur =ball
 	[
-		p [ .01 1 ]v box
+		p [ .01 1 ] box
 		p ball .xy + ball-size box
 		p enemy-position + paddle-size box
 		p player-position + paddle-size box
@@ -93,8 +93,8 @@ iResolution frag->position =p
 ;
 
 :m texture ( d )
-		[ 0 0 0 1 ]v
-		[ 1 1 1 1 ]v
+		[ 0 0 0 1 ]
+		[ 1 1 1 1 ]
 		.001 d - 1000 * 0 1 clamp
 	mix
 ;
