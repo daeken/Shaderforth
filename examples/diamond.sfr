@@ -3,6 +3,8 @@
 	@float uniform =iGlobalTime
 ;
 
+:m , ;
+
 : rotationmat ( axis:vec3 angle:float -> mat4 )
 	axis normalize =axis
 	angle sin =s

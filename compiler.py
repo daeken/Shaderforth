@@ -1019,8 +1019,7 @@ class Compiler(object):
 
 	@word('dup')
 	def dup(self):
-		top = self.ensure_stored()
-		self.rstack.push(top)
+		self.rstack.push(self.ensure_stored())
 
 	@word('swap')
 	def swap(self):
@@ -1145,7 +1144,7 @@ class Compiler(object):
 		count = self.rstack.pop()
 		block = self.blockify(self.rstack.pop())
 
-		for i in xrange(count):
+		for i in xrange(int(count)):
 			self.atoms.insert([i] + list(block))
 
 	@word('when')
@@ -1198,10 +1197,6 @@ class Compiler(object):
 	@word('continue')
 	def continue_(self):
 		self.effects.append(('continue', ))
-
-	@word(',')
-	def nullcomma(self):
-		pass
 
 	@word('select')
 	def select(self):
@@ -1322,11 +1317,6 @@ class Compiler(object):
 		else:
 			off = 0
 		self.rstack.push(float(len(arr) - off))
-
-	@word('sq')
-	def sq(self):
-		x = self.rstack.pop()
-		self.rstack.push(('*', x, x))
 
 	@word('float')
 	def float(self):
