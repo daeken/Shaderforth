@@ -5,14 +5,13 @@
 	@sampler2D uniform =grid
 ;
 :m time iGlobalTime ;
-:m mousepos iMouse .xy [ 1 -1 ]v * 1 + 2 / ;
+:m mousepos iMouse .xy [ 1 -1 ] * 1 + 2 / ;
 
 :m wavespeed .8 ;
 :m wavelife .4 ;
 :m gridsize .2 ;
 :m timedelta .1 ;
 
-:m sq dup * ;
 :m calc1
 		4 8 wavespeed sq * timedelta sq * gridsize sq / -
 		wavelife timedelta * 2 +
@@ -28,13 +27,13 @@
 	/
 ;
 
-: val1 ( p:vec2 o:vec2 -> float )
+: val1 ( o:vec2 p:vec2 -> float )
 		grid
 		p o iResolution .xy / + 1 + 1 mod
 	texture2D .x
 ;
 
-: wave ( -> void )
+: wave ( -> sampler2D )
 	gl_FragCoord .xy iResolution .xy / =p
 	grid p texture2D =prev
 
@@ -54,21 +53,20 @@
 		calc1 prev .x *
 		calc2 prev .y *
 		calc3 [
-			[ 1 0 ]v [ -1 0 ]v [ 0 1 ]v [ 0 -1 ]v
-			[ 1 1 ]v [ -1 1 ]v [ 1 -1 ]v [ -1 -1 ]v
-		] /{ p swap val1 } \+ 2 / *
+			[ 1 0 ] [ -1 0 ] [ 0 1 ] [ 0 -1 ]
+			[ 1 1 ] [ -1 1 ] [ 1 -1 ] [ -1 -1 ]
+		] /{ p val1 } \+ 2 / *
 		add
-	] \+ 1 .0001 - * =>val
+	] \+ 1 .01 - * =>val
 
-	[ val prev .x mousepos ]v =gl_FragColor
+	[ val prev .x mousepos ] =gl_FragColor
 ;
 
 [
 	grid gl_FragCoord .xy iResolution .xy / texture2D 3 * .r.g
 	dup
-	1
-]v =gl_FragColor
+] 10 * ->fragcolor
 
 :passes
-	wave =grid
+	wave =tgrid
 ;

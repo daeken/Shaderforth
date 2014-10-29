@@ -2,6 +2,8 @@ from decimal import *
 import re
 
 def format_float(tval):
+	if tval == Decimal('-0'):
+		return '0.'
 	val = str(Decimal(tval))
 	if '.' not in val:
 		return val + '.'
@@ -260,6 +262,7 @@ class Compiler(object):
 		indentlevel = [1]
 		operators = 'neg + - / * ** < > <= >= == != && ||'.split(' ')
 		precedence = {
+			'?:' : 1, 
 			'+'  : 2, 
 			'-'  : 2, 
 			'*'  : 3, 
@@ -274,7 +277,6 @@ class Compiler(object):
 			'||' : 4, 
 			'&&' : 4, 
 			'.'  : 10, 
-			'?:' : 10, 
 			'[]' : 10,
 			'neg' : 10, 
 		}
@@ -1362,7 +1364,7 @@ class Compiler(object):
 	def set_dimensions(self):
 		var = self.rstack.pop()
 		_, width, height = self.rstack.pop()
-		self.dimensions[var] = width, height
+		self.dimensions[var] = old_float(width), old_float(height)
 
 	@word('toggle')
 	def toggle(self):

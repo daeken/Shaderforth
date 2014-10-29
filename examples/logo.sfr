@@ -29,33 +29,38 @@
 :m union min ;
 :m shape call ;
 
+: zrotate ( v:vec3 a:float -> vec3 )
+	[ v .xy a rotate-deg v .z ]
+;
+
 iResolution frag->position [ 1.2 -1.2 ]v * =p
 
 : distance-field ( p:vec2 -> float )
 	{
-		[ 0 0 0.6 ]v circle
+		[ 0 0 0.6 ] circle
 		{
 			{
-				[ 0 0 0.4 ]v circle
-				{
-					float 120 * =>a
-					{
-						[ 0.13625 -0.04 0.52221283975 ]v a rotate-deg circle
-						[ -0.25375 0.135 0.464630229322 ]v a rotate-deg circle intersect
-						[ -0.2925 -0.10125 0.46492270863 ]v a rotate-deg circle subtract
-					} shape subtract
-				} #3 mtimes
+				[
+					[ 0 0 0.4 ] circle
+					$[0:+360:120] /{ ( a )
+						{
+							[ .14 -.04 .52 ] a zrotate circle
+							[ -.25 .135 .46 ] a zrotate circle intersect
+							[ -.3 -.101 .46 ] a zrotate circle subtract
+						} shape
+					} flatten
+				] \subtract
 			} shape 
 
 			{
-				[ 0 0.18375 0.29504766564065543 ]v circle
-				[ 0 0.18375 0.29504766564065543 ]v 120 rotate-deg circle intersect
-				[ 0 0.18375 0.29504766564065543 ]v 240 rotate-deg circle intersect
-				[ 0 0 0.0434 ]v circle subtract
+				[ 0 .184 .295 ] circle
+				[ 0 .184 .295 ] 120 zrotate circle intersect
+				[ 0 .184 .295 ] 240 zrotate circle intersect
+				[ 0 0 .0434 ] circle subtract
 			} shape subtract
 		} shape subtract
 	} shape 0 max
 ;
 
-p &distance-field gradient 100 * 0. 1. clamp =d
-[ d d d 1 ]v =gl_FragColor
+&distance-field p gradient 100 * 0. 1. clamp =d
+[ d d d ] ->fragcolor

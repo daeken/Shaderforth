@@ -5,6 +5,7 @@
 	@float =timeoff
 ;
 :m time iDate .w timeoff + ;
+:m gtime iGlobalTime ;
 
 :m circle ( p r )
 	p length r -
@@ -43,7 +44,7 @@
 : distance-field ( p:vec2 -> vec4 )
 	time 60 / 60 / floor 12 mod 12 / =hourpos
 	time 60 / floor 60 mod 60 / =minutepos
-		iGlobalTime timeoff + 1 mod iGlobalTime timeoff + 10 * sin abs 2 * 3 + ** 60 * floor 60 /
+		gtime timeoff + 1 mod gtime timeoff + 10 * sin abs 2 * 3 + ** 60 * floor 60 /
 		time 60 mod floor 60 /
 	+ =secondpos
 
@@ -67,18 +68,11 @@
 
 	iResolution frag->position =p
 
-		p { distance-field .x } gradient p texture
+		{ distance-field .x } p gradient p texture
 		t maxtoff + maxtoff /
 	*
 ;
 
 :m backframes 10 ;
 
-[
-	[
-		{ ( i )
-			maxtoff neg i float backframes 1 - / *
-		} backframes int mtimes
-	] /frame \+ backframes / 1.5 *
-	1
-]v =gl_FragColor
+$[-.01:+0:.001] /frame \+ backframes / 3 * ->fragcolor

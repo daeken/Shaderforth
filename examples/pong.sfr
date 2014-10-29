@@ -24,12 +24,16 @@
 :m repeat ( f p c ) p c repeat! dup p swap - *f ;
 :m scale ( f p s ) p s / *f s * ;
 
+:m screen-width
+	iResolution .x.y /
+;
+
 :m enemy-position
-	[ .85 cur .y ]v
+	[ .85 screen-width * cur .y ]v
 ;
 
 :m player-position
-	[ -.85 iMouse .y ]v
+	[ -.85 screen-width * iMouse .y ]v
 ;
 
 :m paddle-size [ .05 .15 ]v ;
@@ -76,7 +80,7 @@
 
 :m cur statebuffer [ 0 0 ]v texture2D ;
 
-gl_FragCoord .xy iResolution .xy / .5 - 2 * =p
+iResolution frag->position =p
 
 : distance-field ( p:vec2 -> float )
 	cur =ball
@@ -95,7 +99,7 @@ gl_FragCoord .xy iResolution .xy / .5 - 2 * =p
 	mix
 ;
 
-p &distance-field gradient texture =gl_FragColor
+&distance-field p gradient texture =gl_FragColor
 
 :passes
 	[ #2 #1 ] &statebuffer set-dimensions

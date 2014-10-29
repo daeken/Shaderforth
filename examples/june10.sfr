@@ -72,4 +72,4 @@ iResolution frag->position =p
 	p [ 0 p .x 10 * mtime 17 * cos * mtime + sin 10 / ] +
 	( mtime 10 * sin 2 * abs .1 + )
 ] \* cart->logpolar =p
-[ p { distance-field .x } gradient p texture 1 ] =gl_FragColor
+{ distance-field .x } p gradient p texture ->fragcolor

@@ -43,10 +43,7 @@
 		p r box
 		p r circle
 		time 8 mod 4 - abs 1 2 clamp 1 -
-	mix abs .01 - =d
-
-	17 =>fac
-	d p .x fac * sin p .y fac * sin * abs .05 * +
+	mix
 ;
 
 :m glider ( f p )
@@ -60,7 +57,7 @@
 ;
 
 : tbox ( p:vec2 -> float )
-	p .2 box
+	p .2 bc
 ;
 
 : inner ( sp:vec2 -> float )
@@ -82,7 +79,7 @@
 
 :m texture ( d p )
 	p distance-field .yzw =mat
-	d neg 1000 * 0 1 clamp =val
+	d neg 100 * 0 1 clamp =val
 	[
 			bgcolor
 			val mat *
@@ -92,4 +89,4 @@
 ;
 
 iResolution frag->position =p
-[ p { distance-field .x } gradient p texture 1 ] =gl_FragColor
+[ { distance-field .x } p gradient p texture 1 ] =gl_FragColor

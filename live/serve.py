@@ -15,7 +15,7 @@ def compile():
 	sys.stdout = StringIO()
 	# sys.stderr = sys.stdout
 	success = True
-	utility = file('utility.glf', 'r').read().decode('utf-8')
+	utility = file('utility.sfr', 'r').read().decode('utf-8')
 	try:
 		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, False, False)
 	except:
@@ -48,7 +48,7 @@ rand_push = random.randrange(1, 100)
 
 @app.route('/refresh/<int:time>')
 def refresh(time=None):
-	mtime = int(max(map(os.path.getmtime, [fn, 'utility.glf', 'compiler.py', 'live/serve.py']))) + rand_push
+	mtime = int(max(map(os.path.getmtime, [fn, 'utility.sfr', 'compiler.py', 'live/serve.py']))) + rand_push
 	if time == mtime:
 		return 'null'
 	return json.dumps([mtime] + list(compile()))

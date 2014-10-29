@@ -3,8 +3,8 @@
 	@float uniform =iGlobalTime
 	@vec2 =op
 	@vec3 =fragcolor
-	@float =time
 ;
+:m time iGlobalTime ;
 
 : derive-pos ( p:vec2 v:vec2 a:vec2 t:float -> vec2 )
 	p v t * +
@@ -94,46 +94,36 @@
 			ltime fuse + fp vel spokes color shape
 		}
 	t fuse <= if
-
-	( {
-		fragcolor color 2 / 0.2 t fuse - - * + =fragcolor
-	} t fuse - 0.2 <= t fuse >= and when )
 ;
 
 gl_FragCoord .xy iResolution .xy / dup =np 2 * 1 - 1.5 * [ 1 iResolution .y.x / ]v * =op
 
-[ 0 0. 0 ]v =fragcolor
+[ 0 0 0 ] =fragcolor
 
 :m steps 3 ;
 :m buffertime 10 ;
 
-: frame ( to:float )
-	iGlobalTime to + =time
-	{ ( i )
-		i float steps / time floor buffertime - + =it
+{ ( i )
+	i float steps / time floor buffertime - + =it
 
-		{
-				it
-				[ it 3253 * sin 0.25 * -1.5 ]v
-				it 709 * sin 0.2 *
-				5 it 2311 * sin 1 + 5 2.0 / * + int
-				[
-					it 197 * 360 mod
-					it 2267 * sin abs
-					0.8
-				]v hsv->rgb
-			firework
-		} it 1493 * sin 0.95 > it 0 >= and when
-	} steps buffertime * int times
-;
-
-0 frame
+	{
+			it
+			[ it 3253 * sin 0.25 * -1.5 ]v
+			it 709 * sin 0.2 *
+			5 it 2311 * sin 1 + 5 2.0 / * + int
+			[
+				it 197 * 360 mod
+				it 2267 * sin abs
+				0.8
+			]v hsv->rgb
+		firework
+	} it 1493 * sin 0.95 > it 0 >= and when
+} steps buffertime * int times
 
 [
 	fragcolor
-	[ 29 255. / 8 255. / 64 255. / ]v np .x iGlobalTime 10 / + sin 0.1 * 1 + *
-	[ 0 0.0 0 ]v
-	1 np .y dup * - mix +
-	1
-]v
- =gl_FragColor
+		[ 29 255. / 8 255. / 64 255. / ] np .x iGlobalTime 10 / + sin 0.1 * 1 + *
+		[ 0 0 0 ]
+		1 np .y sq -
+	mix +
+] ->fragcolor

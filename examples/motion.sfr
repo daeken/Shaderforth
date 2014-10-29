@@ -99,4 +99,4 @@
 ;
 
 iResolution frag->position =p
-[ p { distance-field .x } gradient p texture 1 ] =gl_FragColor
+[ { distance-field .x } p gradient p texture 1 ] =gl_FragColor
