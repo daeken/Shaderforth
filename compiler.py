@@ -670,11 +670,7 @@ class Compiler(object):
 
 	def fold_constants(self, op, operands):
 		def eligible(val):
-			if isinstance(val, float) or isinstance(val, int):
-				return True
-			elif isinstance(val, list):
-				return True#return False not in map(eligible, val if len(val) < 1 or val[0] != 'array' else val[1:])
-			return False
+			return isinstance(val, float) or isinstance(val, int) or isinstance(val, list)
 
 		def fold(a, b):
 			getcontext().prec = 5
