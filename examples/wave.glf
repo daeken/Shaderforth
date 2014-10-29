@@ -34,7 +34,7 @@
 	texture2D .x
 ;
 
-: wave ( -> sampler2D )
+: wave ( -> void )
 	gl_FragCoord .xy iResolution .xy / =p
 	grid p texture2D =prev
 

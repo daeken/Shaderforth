@@ -44,13 +44,26 @@
 :m scale ( f p s ) p s / *f s length * ;
 :m rotate ( f p a ) p a rotate-2d *f ;
 
+: slow ( n:float -> float )
+	1 1 n abs - 1.1 ** - n sign *
+;
+
+:m mvector ( ltime )
+	[
+			ltime 2 * sin slow
+			time 1.2 ** pi / .2 +
+		*
+		.5 1 time eps + / -
+	] polar->cart
+;
+
 : calc-motion ( o:vec2 -> vec2 )
-	[ time o .x + sin 10 / 0 ]
+	time o length 10 / - mvector
 ;
 
 : fluidbox ( p:vec2 -> float )
-	$[-1:+1:.4] /{ ( x )
-		$[-1:+1:.4] /{ ( y )
+	$[-1:+1:.5] /{ ( x )
+		$[-1:+1:.5] /{ ( y )
 				p [ x y ] 20 / +
 				[ x y ] calc-motion
 			+ .05 circle
@@ -59,14 +72,13 @@
 ;
 
 :m obj-count 3 ;
-
 : distance-field ( p:vec2 -> vec4 )
 	[
-		{ ( rp )
-			{ ( rdp )
-				rdp [ .5 0 ] - fluidbox
-			} rp 360 obj-count / deg->rad repeat-rad
-		} p 90 obj-count / neg deg->rad rotate
+		obj-count upto /{ ( i )
+			{ ( rp )
+				rp [ .5 0 ] - fluidbox
+			} p 360 obj-count / i * time 1.3 ** 45 * time 10 / sin * + deg->rad rotate
+		} \min
 		0 0 0
 	]
 ;
@@ -75,9 +87,13 @@
 
 :m texture ( d p )
 	p distance-field .yzw =mat
-	d neg 100 * 0 1 clamp =val
-	 	bgcolor
+			d 85 * abs
+			d neg 100 * 0 1 clamp
+		- abs
+		0 1
+	clamp =val
 		val mat *
+	 	bgcolor
 		val
 	mix
 ;
