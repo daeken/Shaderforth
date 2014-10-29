@@ -132,6 +132,7 @@ bwords = {
 	'-' : (2, None), 
 	'*' : (2, None), 
 	'/' : (2, None), 
+	'**' : (2, None), 
 	'<' : (2, None), 
 	'>' : (2, None), 
 	'<=' : (2, None), 
@@ -144,6 +145,7 @@ foldops = {
 	'-' : lambda a, b: a - b, 
 	'*' : lambda a, b: a * b, 
 	'/' : lambda a, b: a / b, 
+	'**' : lambda a, b: a ** b, 
 }
 glfuncs = dict(
 	dot=2, 
@@ -152,7 +154,6 @@ glfuncs = dict(
 	atan=1, 
 	atan2=2, 
 	cos=1, 
-	pow=2, 
 	exp=1, 
 	sqrt=1, 
 	mod=2, 
@@ -257,12 +258,13 @@ class Compiler(object):
 	def output(self, main):
 		self.emitted = ''
 		indentlevel = [1]
-		operators = 'neg + - / * < > <= >= == != && ||'.split(' ')
+		operators = 'neg + - / * ** < > <= >= == != && ||'.split(' ')
 		precedence = {
 			'+'  : 2, 
 			'-'  : 2, 
 			'*'  : 3, 
 			'/'  : 3, 
+			'**' : 4, 
 			'==' : 4, 
 			'!=' : 4, 
 			'<'  : 4, 
@@ -309,6 +311,8 @@ class Compiler(object):
 					return format_float(atom)
 				return unicode(atom)
 
+			if atom[0] == '**':
+				return 'pow(%s, %s)' % (structure(atom[1]), structure(atom[2]))
 			if atom[0] in operators:
 				if atom[0] == 'neg':
 					return '-%s' % paren(atom[1], 'neg')
@@ -513,8 +517,8 @@ class Compiler(object):
 			for i, elem in enumerate(macro):
 				if elem in spec:
 					macro[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*' and elem[1:] in spec:
-					macro[i] = '*macro_' + name + '_' + elem[1:]
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in spec:
+					macro[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			macros[name] = preamble + macro
 
 		parsed = Code(parse(code))
@@ -724,7 +728,7 @@ class Compiler(object):
 				self.rstack.push(Type(token[1:]))
 			elif len(token) > 1 and token[0] == '&':
 				self.rstack.push(token[1:])
-			elif len(token) > 1 and token[0] == '*':
+			elif len(token) > 1 and token[0] == '*' and token != '**':
 				self.rstack.push(self.macrolocals[token[1:]])
 				self.call()
 			elif len(token) > 2 and token[:2] == '=>':
@@ -853,8 +857,8 @@ class Compiler(object):
 			for i, elem in enumerate(atoms):
 				if elem in spec:
 					atoms[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] == '*' and elem[1:] in spec:
-					atoms[i] = '*macro_' + name + '_' + elem[1:]
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in spec:
+					atoms[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
 		return atoms
@@ -1114,6 +1118,9 @@ class Compiler(object):
 	def blockify(self, atom):
 		if isinstance(atom, list):
 			return atom
+
+		if atom in self.macrolocals:
+			atom = self.macrolocals[atom]
 
 		if atom in self.macros:
 			return self.macros[atom]
@@ -1400,7 +1407,7 @@ class Compiler(object):
 		self.rstack.push(['array'] + list(map(float, range(int(top)))))
 
 def main(fn, shadertoy=None, minimize=None):
-	utility = file('utility.glf', 'r').read().decode('utf-8')
+	utility = file('utility.sfr', 'r').read().decode('utf-8')
 	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, shadertoy == '--shadertoy', minimize == '--minimize')
 	for name, code in compiler.outcode.items():
 		print >>sys.stderr, '// Shader', name

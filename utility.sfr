@@ -56,7 +56,8 @@
 	]
 ;
 :m rotate-deg ( c a ) c a deg->rad rotate ;
-:m ** pow ;
+:m pow ** ;
+:m sq 2 ** ;
 
 ( Coordinate System Utilities )
 
@@ -97,3 +98,7 @@
 :m multi3 ( arr )
 	[ arr /{ ( x ) arr /{ ( y ) arr /{ ( z ) [ x y z ] } flatten } flatten } flatten ]
 ;
+
+( Image Operations )
+:m blur-range $[-.01:+.01:.01] ;
+:m blur ( f ) blur-range multi2 /f \+ blur-range size sq / ;

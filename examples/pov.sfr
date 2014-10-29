@@ -59,11 +59,8 @@
 	texture2D .rgb
 ;
 :m back-pixel [ 0 0 ] back-pixel-off ;
-:m blur-range $[-.01:+.01:.01] ;
 
-:m persist
-	blur-range multi2 /back-pixel-off \+ blur-range size dup * / .99 *
-;
+:m persist &back-pixel-off blur .99 * ;
 
 : orb ( -> vec3 )
 	iResolution frag->position =p
