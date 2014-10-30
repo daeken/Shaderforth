@@ -1,0 +1,5 @@
+: test ( float -> float ) 5 + ;
+: test2 ( left:float -> float ) left 5 + ;
+
+10 test =foo
+10 test2 =bar

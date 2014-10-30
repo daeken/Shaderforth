@@ -1,0 +1,12 @@
+:m test 5 + ;
+
+10 =foo
+foo test =bar
+
+:m test2 ( left ) left 5 + ;
+
+foo test2 =baz
+
+:m test3 ( $left ) left 5 + left * ;
+
+foo 20 * test3 =baz

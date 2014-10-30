@@ -1,0 +1,11 @@
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+iResolution frag->position =p
+
+[
+	p sin abs
+	iGlobalTime sin abs
+] ->fragcolor
