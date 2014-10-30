@@ -52,7 +52,7 @@ Words
 
 Words are the Shaderforth analogue to GLSL's functions.  They may take in arguments and return one or no value.  A simple example:
 
-	`: test ( float -> float ) 5 + ;`
+	: test ( float -> float ) 5 + ;
 
 This compiles to:
 
@@ -63,6 +63,10 @@ This compiles to:
 You notice that there was no need to give arguments a name; arguments are on the stack in a left-to-right order.  That is, the topmost element of the stack is the rightmost argument.
 
 However, it is possible to give arguments names as well, for simplicity's sake:
+
+	: test2 ( left:float -> float ) left 5 + ;
+
+Which compiles to:
 
 	float test2(float left) {
 		return left + 5.;
