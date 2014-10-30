@@ -47,6 +47,11 @@ The `->fragcolor` macro turns the RGB vector into an RGBA vector (with alpha con
 Language Features
 =================
 
+Numbers
+-------
+
+By default, all numeric constants in Shaderforth are floats.  If you need an int, you can either cast it (e.g. `5 int`) or use an integer constant (e.g. `#5`).
+
 Words
 -----
 
@@ -125,6 +130,23 @@ A simple example of `[ 1 2 3 4 ]` will compile to `vec4(1., 2., 3., 4.)`, as you
 
 The map operation, `/`, passes each element into a block to make a new array.  `[ 1 2 3 4 ] /sin` becomes `vec4(sin(1.), sin(2.), sin(3.), sin(4.))`.  This can be combined with the reduce operation: `[ 1 2 3 4 ] /sin \+` becomes `sin(1.) + sin(2.) + sin(3.) + sin(4.)`.
 
+You can turn an array into a matrix using the `amat` word, or by closing your array definition with `]m`.
+
+Swizzling
+---------
+
+Like in GLSL, vectors can be swizzled.  `foo .xyz` is equivalent to `foo.xyz`, as you might expect.  However, this has been expanded in Shaderforth.  `foo .xy.z` will push both `foo .xy` and `foo .z` to the stack.  It's important that there is no space between the swizzles, otherwise those operations would be performed in series, not in parallel, ending in invalid results.
+
+Array Assignment
+----------------
+
+Arrays can be assigned to locals/macro locals using the `=[ ]` and `=>[ ]` operations.  For instance, `[ 1 2 ] =[ foo bar ]` would assign `1` and `2` to `foo` and `bar`, respectively.
+
+Range Constants
+---------------
+
+Range constants allow the easy creation of arrays.  They take the form of `$[start:end:step]`.  Start and step are optional, but start must be present if step is to be used.  This is normally exclusive, so `$[0:5:1]` is `[ 0 1 2 3 4 ]`; however, you can indicate an inclusive range by beginning the end value with `+`.  E.g. `$[0:+5:1]` is `[ 0 1 2 3 4 5 ]`.
+
 Blocks
 ------
 
@@ -158,29 +180,93 @@ Built-ins and Library
 Operators
 ---------
 
-`+`, `-`, `*`, `/`, `**` (power operator), `and` (equivalent to `&&`), `or` (equivalent to `||`)
+`+`, `-`, `*`, `/`, `**` (power operator), `and` (equivalent to `&&`), `or` (equivalent to `||`), `neg` (equivalent to unary `-`).
 
-Words
---------
+Built-ins
+---------
 
-- GLSL functions are all there as words (This isn't complete, but it's pretty straightforward to see how they are added)
-- `=name` -- Assigns to a GLSL variable named `name`
-- `=>name` -- Creates a local macro variable, whose value will be embedded literally wherever it's used
-- `: name ( argtype argtype argtype -> returntype ) atom atom atom ;` -- Defines a word that will be created as a GLSL function
-	- This can optionally take argument names, `argname:argtype`, which will become macro locals.
-- `:m name atom atom atom ;` -- Defines a macro word whose contents will be inlined upon use
-	- This can optionally take argument names, which will become macro locals.  `:m name ( arg1 arg2 ) atom atom atom ;`
-- `( )` -- Everything between parentheses (make sure you include spaces around them -- these are both words) will be ignored as a comment, with the exception of type specifiers on words
-- `[ atom atom atom ]` -- Defines an array
-- `[ atom atom atom ]v` -- Defines a vector.  Equivalent to the same array followed by `avec`
-- `/word` -- For each element of the array at the top of the stack, map against `word` -- this can take a macro word
-- `\word` -- Performs a reduce operation with `word` against the array at the top of the stack -- this can take a macro word
+- GLSL functions are all there as words (Incomplete)
 - `flatten` -- Given an array at the top of the stack, this will turn the elements into native stack elements
-- `avec` -- Takes an array from the top of the stack and generates a vector of the requisite size
 - `dup` -- Duplicates the element at the top of the stack
 - `swap` -- Swaps the top two elements of the stack
-- Binary math operators -- They're used as expected
-- Unary math operator `negate` -- Flips the sign on the topmost element
-- `&word` -- Pushes a word reference to the stack
-- `call` -- Executes a word reference
-- `*name` -- Equivalent to `name call`
+- `take ( num )` -- Moves element `num` down from the top of the stack to the top
+- `call` -- Invokes a block
+	- `*name` -- Equivalent to `name call`
+- `int ( val )` and `float ( val )` -- Casts to `int` or `float`, respectively
+- `times ( block count )` -- Calls `block` `count` times, passing `0` to `count - 1` to `block`; this is translated to a `for` loop
+	- `continue` -- Skips to the next iteration of the loop
+	- `break` -- Terminates execution of the loop
+- `mtimes ( block count )` -- Just like `times`, except that the loop is unrolled at compile-time
+- `when ( block cond )` -- If `cond` is true, call `block`
+- `if ( then else cond )` -- If `cond` is true, call `then`, otherwise call `else`
+- `select ( a b cond )` -- If `cond` is true, return `a`, otherwise return `b`.  Equivalent to `?:` in GLSL
+- `cond ( cases )` and `choose ( cases )` -- See below
+- `size ( arr )` -- Returns the length of `arr`
+- `upto ( top )` -- Returns an array containing 0-top, exclusive
+
+### `cond` and `choose`
+
+`cond` makes it easy to chain together comparisons.  See this example:
+
+	[
+		foo 0 == { 0 =bar }
+		foo 1 > { 2 =bar }
+		{ 8 =bar }
+	] cond
+
+This is compiled to:
+
+	if(foo == 0.) {
+		bar = 0.;
+	} else if(foo > 1.) {
+		bar = 2.;
+	} else {
+		bar = 8.;
+	}
+
+Note that it takes the form of one or more `if` pairs, then an optional `else`.
+
+`choose` is similar.  The differences are that it's turned into a ternary tree, all comparisons must be equality (it's similar to a C switch in that regard), and instead of using blocks, it uses values.  So for instance:
+
+	[
+		0 0
+		1 2
+		8
+	] foo choose =bar
+
+Compiles to:
+
+	bar = foo == 0. ? 0. : foo == 1. ? 2. : 8.;
+
+Utility
+-------
+
+These are all defined in `utility.sfr` and comprise the "standard library" for Shaderforth.  Most are convenience functions that will simply serve to make your life easier.
+
+- `pi`, `tau`, `eps`, `inf`, `_e` -- Approximate definitions of various constants
+- Comparators
+	- `amin ( arr f )` -- Finds the minimum value of `f(element)` for each element of `arr`, then returns the corresponding element
+	- `amax ( arr f )` -- Equivalent to `amin`, for maximums
+	- `minmax ( a b )` -- Returns an array containing first the minimum of `a` and `b`, then the maximum
+- Maths
+	- `closest-point-line ( a b point )` -- Given line `a-b`, returns the point on the line that is closest to `point` (2D only)
+	- `point-distance-line ( a b point )` -- Given line `a-b`, returns the distance from `point` to the closest point on the line
+	- `deg->rad ( val )` and `rad->deg ( val )` -- Converts from degrees to radians and vice versa
+	- `rotate-2d ( c a )` -- Rotates 2d point `c` around the origin by `a` radians
+	- `sq ( val )` -- Squares `val`
+- Coordinate system utilities
+	- `cart->polar ( p )` and `polar->cart ( p )` -- Converts `p` from cartesian to polar coordinates and vice versa.  Polar vector is of the form `[ angle radius ]`
+	- `cart->logpolar ( p )` and `logpolar->cart ( p )` -- Converts `p` from cartesian to logarithmic polar coordinates and vice versa.  This is equivalent to the polar coordinates above, except that the natural logarithm of `radius` is taken
+	- `polar-norm ( p )` -- Normalizes polar coordinates by bringing the angle into the range 0 - tau
+	- `p+ ( p v )` and `p- ( p v )` -- Convenience functions for adding and subtracting with coordinates.  Converts `p` to polar coordinates, adds/subtracts `v`, then converts back to cartesian
+	- `frag->position ( resolution )` -- Converts fragment coordinates to be in the range of -1 to 1 for the height.  The range of the width will depend on the aspect ratio; if it's 1:1, then the range will also be -1 to 1.
+- Distance field utilities
+	- `gradient ( f p )` -- Finds the gradient of a 2d isosurface, given a definition `f` and point `p`.  See [http://www.iquilezles.org/www/articles/distance/distance.htm](this article) for more information
+- Color operations
+	- `hsv->rgb ( hsv )` -- Converts a vector of HSV value into RGB.  H should be in the range 0-360, with S and V in the range 0-1.
+	- `->fragcolor ( color )` -- Assigns `color` to `gl_FragColor`, expanding it to RGBA with constant alpha 1
+- Array operations
+	- `multi2 ( arr )` and `multi3 ( arr )` -- Turns a 1d array into a 2d or 3d array, respectively.
+		- For instance, `[ 1 2 3 ] multi2` generates `[ [ 1 1 ] [ 1 2 ] [ 1 3 ] [ 2 1 ] [ 2 2 ] ... ]`
+- Image operations
+	- `blur ( f )` -- Performs a simple blur operation on a 2d function, `f`, and returns the result
