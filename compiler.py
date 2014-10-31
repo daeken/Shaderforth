@@ -690,6 +690,28 @@ class Compiler(object):
 		else:
 			return tuple([op] + operands)
 
+	def fold_swizzles(self, elem, swizzles):
+		def eligible(arr, top=False):
+			if not isinstance(arr, list) and not isinstance(arr, tuple):
+				return True
+			elif arr[0] == 'array':
+				return False not in map(eligible, arr[1:])
+			elif arr[0] == 'var' and not top:
+				return True
+			return False
+
+		letterElem = dict(x=0, y=1, z=2, w=3, r=0, g=1, b=2, a=3)
+
+		if eligible(elem, top=True):
+			for swizzle in swizzles:
+				if len(swizzle) == 1:
+					self.rstack.push(elem[letterElem[swizzle] + 1])
+				else:
+					self.rstack.push(['array'] + [elem[letterElem[char] + 1] for char in swizzle])
+		else:
+			for swizzle in swizzles:
+				self.rstack.push(('.' + swizzle, elem, False))
+
 	def compile(self, name, atoms, pre=False):
 		Compiler.compiling = name
 		self.atoms = Code(atoms)
@@ -740,8 +762,12 @@ class Compiler(object):
 			elif len(token) > 1 and token[0] == '.':
 				elem = self.rstack.pop()
 				is_struct = self.infertype(elem) in self.structs
-				for swizzle in token[1:].split('.'):
-					self.rstack.push(('.' + swizzle, elem, is_struct))
+				swizzles = token[1:].split('.')
+				if is_struct:
+					for swizzle in swizzles:
+						self.rstack.push(('.' + swizzle, elem, is_struct))
+				else:
+					self.fold_swizzles(elem, swizzles)
 			elif len(token) > 1 and token[0] == '/':
 				if token == '/{':
 					self.map(self.block())
