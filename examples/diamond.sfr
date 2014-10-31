@@ -257,4 +257,4 @@ cs pos .x * cu pos .y * + cd focus * + normalize =dir
 	} cur .distance far < if
 } iters times
 
-[ c 1 ] =gl_FragColor
+c ->fragcolor
