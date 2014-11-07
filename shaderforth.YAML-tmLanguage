@@ -31,19 +31,37 @@ patterns:
       name: storage.type.function.shaderforth
   patterns:
     - include: $self
+- comment: imports
+  name: keyword.import.shaderforth
+  match: (?!\s)import\[\s(.*?)\s\](?=\s)
+  captures:
+    '1':
+      name: storage.type.name.shaderforth
 - comment: macros
   name: meta.function.shaderforth
-  begin: (?!\s)(:m|:globals|:passes)\s+([^\s]+)(\s+\(\s+([^\)]+\s+)?\))?
+  begin: (?!\s):m\s+([^\s]+)(\s+\(\s+([^\)]+\s+)?\))?
   beginCaptures:
-    '2':
+    '1':
       name: storage.type.function.shaderforth
-    '3':
+    '2':
       name: keyword.shaderforth
-    '4':
+    '3':
       name: entity.name.function.shaderforth
   end: (?!\s);(?=\s)
   endCaptures:
     '1':
+      name: storage.type.function.shaderforth
+  patterns:
+    - include: $self
+- comment: globals/passes
+  name: meta.function.shaderforth
+  begin: (?!\s)(:globals|:passes)(?=\s)
+  beginCaptures:
+    '0':
+      name: storage.type.function.shaderforth
+  end: (?!\s);(?=\s)
+  endCaptures:
+    '0':
       name: storage.type.function.shaderforth
   patterns:
     - include: $self
@@ -80,7 +98,7 @@ patterns:
 
 - comment: named
   name: keyword.shaderforth
-  match: (=>|=|\.|&|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&*()\[\]+=+<>]+)
+  match: (?!\s)(->|=>|=|\.|&|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&*()\[\]+=+<>]+)(?=\s)
   captures:
     '1':
       name: keyword.shaderforth

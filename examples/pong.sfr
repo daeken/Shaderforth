@@ -1,3 +1,5 @@
+import[ distance-2d ]
+
 :globals
 	@vec3 uniform =iResolution
 	@vec4 uniform =iMouse
@@ -5,24 +7,6 @@
 	@sampler2D uniform =statebuffer
 ;
 :m time iGlobalTime ;
-
-:m circle ( p r )
-	p length r -
-;
-:m box ( p d )
-	p abs d - 0 max length
-;
-:m roundbox ( p r d )
-	 p d box r - 0 max
-;
-
-:m intersect \max ;
-:m union \min ;
-:m subtract \{ neg max } ;
-
-:m repeat! ( p c ) p c mod .5 c * - ;
-:m repeat ( f p c ) p c repeat! dup p swap - *f ;
-:m scale ( f p s ) p s / *f s * ;
 
 :m screen-width
 	iResolution .x.y /
@@ -85,21 +69,18 @@ iResolution frag->position =p
 : distance-field ( p:vec2 -> float )
 	cur =ball
 	[
-		p [ .01 1 ] box
-		p ball .xy + ball-size box
-		p enemy-position + paddle-size box
-		p player-position + paddle-size box
+		p [ .01 1 ] ubox
+		p ball .xy + ball-size ubox
+		p enemy-position + paddle-size ubox
+		p player-position + paddle-size ubox
 	] union
 ;
 
 :m texture ( d )
-		[ 0 0 0 1 ]
-		[ 1 1 1 1 ]
-		.001 d - 1000 * 0 1 clamp
-	mix
+	.001 d - 1000 * 0 1 clamp vec3
 ;
 
-&distance-field p gradient texture =gl_FragColor
+&distance-field p gradient texture ->fragcolor
 
 :passes
 	[ #2 #1 ] &statebuffer set-dimensions

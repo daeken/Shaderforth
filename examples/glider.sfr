@@ -34,8 +34,7 @@ import[ distance-2d ]
 ;
 
 :m texture ( d p )
-	d neg 100 * 0 1 clamp 1 swap - =v
-	[ v v v ]
+	d neg 100 * 0 1 clamp vec3
 ;
 
 iResolution frag->position =p

@@ -181,6 +181,8 @@ glfuncs = dict(
 	log=1, 
 	log2=1, 
 	vec2=1, 
+	vec3=1, 
+	vec4=1, 
 )
 gltypes = dict(
 	dot='float', 
@@ -203,6 +205,7 @@ class Compiler(object):
 		self.barecode = code
 		self.code = utility + code
 		self.imports = []
+		self.loaded_modules = []
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -514,19 +517,24 @@ class Compiler(object):
 				while fp.endswith('\\'):
 					fp = fp[:-1] + ' ' + code.consume()
 				assert code.consume() == ']'
-				
-				try:
-					tfp = 'modules/' + fp + '.sfr'
-					subcode = file(str(tfp)).read()
-					self.imports.append(tfp)
-				except:
+
+				if fp not in self.loaded_modules:
+					self.loaded_modules.append(fp)
+					
 					try:
-						subcode = file(fp + '.sfr').read()
-						self.imports.append(fp + '.sfr')
+						tfp = 'modules/' + fp + '.sfr'
+						subcode = file(str(tfp)).read()
+						self.imports.append(tfp)
 					except:
-						print >>sys.stderr, 'Failed to load import:', `fp`
-						subcode = ''
-				subcode = self.preprocess(parse(subcode))
+						try:
+							subcode = file(fp + '.sfr').read()
+							self.imports.append(fp + '.sfr')
+						except:
+							print >>sys.stderr, 'Failed to load import:', `fp`
+							subcode = ''
+					subcode = self.preprocess(parse(subcode))
+				else:
+					subcode = []
 				code.elems = code.elems[:start] + subcode + code.elems[code.i:]
 				code.i = start
 

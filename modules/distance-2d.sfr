@@ -7,6 +7,9 @@
 		t 0 max length
 	+
 ;
+:m ubox ( p d )
+	p abs d - 0 max length
+;
 :m roundbox ( p r d )
 	 p d box r -
 ;

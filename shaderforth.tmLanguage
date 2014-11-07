@@ -79,21 +79,37 @@
 			</array>
 		</dict>
 		<dict>
+			<key>captures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>storage.type.name.shaderforth</string>
+				</dict>
+			</dict>
+			<key>comment</key>
+			<string>imports</string>
+			<key>match</key>
+			<string>(?!\s)import\[\s(.*?)\s\](?=\s)</string>
+			<key>name</key>
+			<string>keyword.import.shaderforth</string>
+		</dict>
+		<dict>
 			<key>begin</key>
-			<string>(?!\s)(:m|:globals|:passes)\s+([^\s]+)(\s+\(\s+([^\)]+\s+)?\))?</string>
+			<string>(?!\s):m\s+([^\s]+)(\s+\(\s+([^\)]+\s+)?\))?</string>
 			<key>beginCaptures</key>
 			<dict>
-				<key>2</key>
+				<key>1</key>
 				<dict>
 					<key>name</key>
 					<string>storage.type.function.shaderforth</string>
 				</dict>
-				<key>3</key>
+				<key>2</key>
 				<dict>
 					<key>name</key>
 					<string>keyword.shaderforth</string>
 				</dict>
-				<key>4</key>
+				<key>3</key>
 				<dict>
 					<key>name</key>
 					<string>entity.name.function.shaderforth</string>
@@ -106,6 +122,39 @@
 			<key>endCaptures</key>
 			<dict>
 				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>storage.type.function.shaderforth</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.function.shaderforth</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>$self</string>
+				</dict>
+			</array>
+		</dict>
+		<dict>
+			<key>begin</key>
+			<string>(?!\s)(:globals|:passes)(?=\s)</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>storage.type.function.shaderforth</string>
+				</dict>
+			</dict>
+			<key>comment</key>
+			<string>globals/passes</string>
+			<key>end</key>
+			<string>(?!\s);(?=\s)</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
 				<dict>
 					<key>name</key>
 					<string>storage.type.function.shaderforth</string>
@@ -217,7 +266,7 @@
 			<key>comment</key>
 			<string>named</string>
 			<key>match</key>
-			<string>(=&gt;|=|\.|&amp;|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&amp;*()\[\]+=+&lt;&gt;]+)</string>
+			<string>(?!\s)(-&gt;|=&gt;|=|\.|&amp;|\\|/|\*|@)([a-zA-Z0-9\-_~!@#$%^&amp;*()\[\]+=+&lt;&gt;]+)(?=\s)</string>
 			<key>name</key>
 			<string>keyword.shaderforth</string>
 		</dict>
