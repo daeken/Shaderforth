@@ -502,6 +502,32 @@ class Compiler(object):
 			self.rename_i += 1
 			return sname
 
+	def preprocess(self, code):
+		code = Code(code)
+
+		while code.peek() is not None:
+			token = code.consume()
+			if token == 'import[':
+				start = code.i - 1
+				fp = code.consume()
+				while fp.endswith('\\'):
+					fp = fp[:-1] + ' ' + code.consume()
+				assert code.consume() == ']'
+				
+				try:
+					subcode = file('modules/' + fp + '.sfr').read()
+				except:
+					try:
+						subcode = file(fp + '.sfr').read()
+					except:
+						print 'Failed to load import:', `fp`
+						subcode = ''
+				subcode = self.preprocess(parse(subcode))
+				code.elems = code.elems[:start] + subcode + code.elems[code.i:]
+				code.i = start
+
+		return code.elems
+
 	def parsewords(self, code):
 		def sanitize(name, macro):
 			spec = macrospec[name]
@@ -523,7 +549,7 @@ class Compiler(object):
 					macro[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			macros[name] = preamble + macro
 
-		parsed = Code(parse(code))
+		parsed = Code(self.preprocess(parse(code)))
 		parseloc = 0
 		words, macros = {'main': []}, {}
 		macrospec = {}
@@ -678,7 +704,7 @@ class Compiler(object):
 				if isinstance(b, list):
 					assert len(a) == len(b)
 					return ['array'] + map(lambda i: self.fold_constants(op, [a[i], b[i]]), xrange(1, len(a)))
-				elif False not in map(eligible, a):
+				elif False not in map(eligible, a[1 if len(a) > 0 and a[0] == 'array' else 0:]):
 					return ['array'] + map(lambda x: foldops[op](x, b), a[1:])
 				else:
 					return tuple([op, a, b])
