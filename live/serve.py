@@ -36,7 +36,6 @@ def compile():
 		passes = compiler.passes
 		dimensions = compiler.dimensions
 		options = compiler.options
-		last_imports = compiler.imports
 	else:
 		shaders = dict(main='void main() { gl_FragColor = vec4(1., 0., 0., 1.); }')
 		globals = {}

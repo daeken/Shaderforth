@@ -2,8 +2,18 @@
 	@float =nrand
 ;
 
+:m seed 8179 ; ( You can override this in your own code )
+
+:m seed-calc ( p ) [ seed seed ] p seed + sin seed * cos seed * tan * length ;
+:m seed-rand ( p ) p seed-calc =nrand ;
+
+: rand-val ( p:vec2 -> float )
+	p seed-calc =temp
+	temp seed + sin temp * temp + abs seed mod =temp
+	temp sin abs
+;
+
 : rand ( -> float )
 	nrand seed + sin nrand * nrand + abs seed mod =nrand
 	nrand sin abs
 ;
-:m seed-rand ( p ) [ seed seed ] p seed + sin seed * cos seed * tan * length =nrand ;

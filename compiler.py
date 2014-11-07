@@ -176,6 +176,7 @@ glfuncs = dict(
 	smoothstep=3, 
 	ceil=1, 
 	floor=1, 
+	fract=1, 
 	sign=1, 
 	texture2D=2, 
 	log=1, 
@@ -718,6 +719,11 @@ class Compiler(object):
 					return ['array'] + map(lambda i: self.fold_constants(op, [a[i], b[i]]), xrange(1, len(a)))
 				elif False not in map(eligible, a[1 if len(a) > 0 and a[0] == 'array' else 0:]):
 					return ['array'] + map(lambda x: foldops[op](x, b), a[1:])
+				else:
+					return tuple([op, a, b])
+			elif isinstance(b, list):
+				if False not in map(eligible, b[1 if len(b) > 0 and b[0] == 'array' else 0:]):
+					return ['array'] + map(lambda x: foldops[op](a, x), b[1:])
 				else:
 					return tuple([op, a, b])
 			else:

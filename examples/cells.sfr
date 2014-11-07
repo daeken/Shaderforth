@@ -1,0 +1,13 @@
+import[ noise ]
+
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime ;
+
+iResolution frag->position =p
+
+p time .37 * sin 2 ** 3 * abs .5 + * time 2 / sin 2 * rotate-2d [ time .17 * time .37 * ] 5 * + snoise-2d =v
+[ v 100 * time 3.7 * + sin 180 * 180 + v abs v neg 17 * time 1.4 * + sin v * abs ] hsv->rgb ->fragcolor
