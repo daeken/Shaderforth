@@ -1,0 +1,9 @@
+:globals
+	@float =nrand
+;
+
+: rand ( -> float )
+	nrand seed + sin nrand * nrand + abs seed mod =nrand
+	nrand sin abs
+;
+:m seed-rand ( p ) [ seed seed ] p seed + sin seed * cos seed * tan * length =nrand ;
