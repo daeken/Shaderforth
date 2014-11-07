@@ -1,0 +1,125 @@
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m anim
+	1 iGlobalTime 8 mod 4 - abs 1 - 1.5 / 0 1 clamp 3 pow -
+;
+
+: cwarp ( c:vec3 -> vec3 )
+	anim =t
+	[
+			c .xy 1 t - *
+			[ t pi * -1 * 0 ]
+		p+
+		c .z t 2.5 * 1 + *
+	]
+;
+
+: p-circle ( p:vec2 c:vec3 -> float )
+	c cwarp =c
+	c .xy p - length c .z -
+;
+
+:m circle ( c ) p c p-circle ;
+
+:m intersect max ;
+:m subtract neg max ;
+:m union min ;
+:m shape call ;
+
+: zrotate ( v:vec3 a:float -> vec3 )
+	[ v .xy a rotate-deg v .z ]
+;
+
+iResolution frag->position [ 1.2 -1.2 ] * =p
+
+: distance-field ( p:vec2 -> float )
+	p iGlobalTime neg rotate-2d =p
+	{
+		[ 0 0 0.6 ] circle
+		{
+			{
+				[
+					[ 0 0 0.4 ] circle
+					$[0:+360:120] /{ ( a )
+						{
+							[ .14 -.04 .52 ] a zrotate circle
+							[ -.25 .135 .46 ] a zrotate circle intersect
+							[ -.3 -.101 .46 ] a zrotate circle subtract
+						} shape
+					} flatten
+				] \subtract
+			} shape 
+
+			{
+				[ 0 .184 .295 ] circle
+				[ 0 .184 .295 ] 120 zrotate circle intersect
+				[ 0 .184 .295 ] 240 zrotate circle intersect
+				[ 0 0 .0434 ] circle subtract
+			} shape subtract
+		} shape subtract
+	} shape
+;
+
+:m paper-color [ 0.83 0.83 0.83 ] ;
+:m line-color [ .23 .20 .19 ] ;
+:m fill-color [ 0.44 0.38 0.37 ] ;
+
+:m rfac
+	1 iGlobalTime 1000 * sin abs .025 * .025 + - *
+;
+
+: hatching ( p:vec2 -> float )
+	p 1000 * sin .0015 * p + =p
+	[
+		[
+			p rfac \+ 100 * sin .9 1 clamp .9 - 10 * rfac
+			p [ 1 -1 ] * \+ 100 * sin p .x p .y 137 * sin 5 * + sin + .9 1 clamp .9 - 10 *
+		] \-
+		[
+			p rfac [ -1.4 1 ] * \+ 50 * sin .95 1 clamp .95 - 20 *
+		] \- .4 *
+	] \+ 2 /
+;
+
+:m fill-pattern ( p )
+	p [ .5 .05 p .x sin abs * + rfac 1 rfac ] * \+ 200 * sin .9 1 clamp .9 - 10 *
+;
+
+:m paper ( p )
+	paper-color p hatching .2 * -
+;
+
+:m line ( d p )
+	line-color
+;
+
+: fill ( d:float p:vec2 -> vec3 )
+	[
+		fill-color
+		p hatching .05 *
+		p fill-pattern .2 *
+	] \-
+;
+
+:m line-thickness .01 ;
+
+: texturize ( d:float p:vec2 -> vec3 )
+	d iGlobalTime 100 * d p .y * 10 * * sin .4 * d * + =d
+	[
+			d abs line-thickness <=
+			d abs p hatching .04 * - line-thickness <=
+		or { d p line }
+		d 0 < { d p fill }
+		{ p paper }
+	] cond
+;
+
+	p
+	[ 0 p .y 100 * iGlobalTime 10 * + sin .003 * ] p+
+	[ p .y 10 * iGlobalTime 10 * iGlobalTime 17 / sin * + sin .005 * 0 ] +
+=wp
+
+&distance-field wp gradient p texturize ->fragcolor
