@@ -58,6 +58,7 @@
 :m rotate-deg ( c a ) c a deg->rad rotate-2d ;
 :m pow ** ;
 :m sq 2 ** ;
+:m round .5 + floor ;
 
 ( Coordinate System Utilities )
 
