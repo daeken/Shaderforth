@@ -24,37 +24,19 @@ import[ distance-2d ]
 	] union
 ;
 
-: tbox ( p:vec2 -> float )
-	p .2 bc
-;
-
-: inner ( sp:vec2 -> float )
-	&tbox sp glider
-;
-
 : subgl ( gp:vec2 -> float )
-	&inner gp .325 scale
+		{ ( sp ) { .2 bc } sp glider }
+	gp .325 scale
 ;
 
-: distance-field ( p:vec2 -> vec4 )
-	[
-		&subgl p glider
-		0 0 0
-	]
+: distance-field ( p:vec2 -> float )
+	&subgl p glider
 ;
-
-:m bgcolor [ 1 1 1 ] ;
 
 :m texture ( d p )
-	p distance-field .yzw =mat
-	d neg 100 * 0 1 clamp =val
-	[
-			bgcolor
-			val mat *
-			val
-		mix
-	]
+	d neg 100 * 0 1 clamp 1 swap - =v
+	[ v v v ]
 ;
 
 iResolution frag->position =p
-{ distance-field .x } p gradient p texture ->fragcolor
+&distance-field p gradient p texture ->fragcolor
