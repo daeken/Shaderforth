@@ -26,8 +26,9 @@ $(document).ready () ->
 		success = (data) ->
 			if data == null
 				return
-			[last, success, shaders, globals, passes, dimensions, options, messages] = data
-			$('#errors').text(messages)
+			[last, success, shaders, globals, passes, dimensions, options, messages, errors] = data
+			$('#messages').text(messages)
+			$('#errors').text(errors)
 			if success
 				init_options options
 				init shaders, globals, passes, dimensions
@@ -69,7 +70,7 @@ class Renderer
 		if !ctx.getShaderParameter(f, ctx.COMPILE_STATUS)
 			console.log('Failed to compile fragment shader ' + @name + '.')
 			$('#errors').text($('#errors').text() + '\n' + ctx.getShaderInfoLog(f))
-		$('#errors').text($('#errors').text() + '\n' + @code)
+		$('#messages').text($('#messages').text() + '\n' + @code)
 		ctx.attachShader(p, f)
 		ctx.linkProgram(p)
 		@p = p

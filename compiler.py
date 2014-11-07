@@ -1,5 +1,5 @@
 from decimal import *
-import re
+import re, sys
 
 def format_float(tval):
 	if tval == Decimal('-0'):
@@ -202,6 +202,7 @@ class Compiler(object):
 	def __init__(self, code, utility, shadertoy=False, minimize=False):
 		self.barecode = code
 		self.code = utility + code
+		self.imports = []
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -515,12 +516,15 @@ class Compiler(object):
 				assert code.consume() == ']'
 				
 				try:
-					subcode = file('modules/' + fp + '.sfr').read()
+					tfp = 'modules/' + fp + '.sfr'
+					subcode = file(str(tfp)).read()
+					self.imports.append(tfp)
 				except:
 					try:
 						subcode = file(fp + '.sfr').read()
+						self.imports.append(fp + '.sfr')
 					except:
-						print 'Failed to load import:', `fp`
+						print >>sys.stderr, 'Failed to load import:', `fp`
 						subcode = ''
 				subcode = self.preprocess(parse(subcode))
 				code.elems = code.elems[:start] + subcode + code.elems[code.i:]
@@ -838,7 +842,7 @@ class Compiler(object):
 			elif token == 'false':
 				self.rstack.push(False)
 			else:
-				print 'unknown token', token, self.rstack
+				print >>sys.stderr, 'unknown token', token, self.rstack
 				raise Exception('Unknown token')
 
 		assert len(self.rstack) <= 1
@@ -1172,7 +1176,7 @@ class Compiler(object):
 		elif atom in self.words or atom in bwords:
 			return [atom]
 		else:
-			print 'Unknown atom to blockify', atom
+			print >>sys.stderr, 'Unknown atom to blockify', atom
 			assert False
 
 	@word('times')
@@ -1451,5 +1455,4 @@ def main(fn, shadertoy=None, minimize=None):
 		print >>sys.stderr
 
 if __name__=='__main__':
-	import sys
 	main(*sys.argv[1:])

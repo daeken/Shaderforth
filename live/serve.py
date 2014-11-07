@@ -9,11 +9,14 @@ import logging
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
+last_imports = []
+
 def compile():
+	global last_imports
 	old = sys.stdout
 	olde = sys.stderr
 	sys.stdout = StringIO()
-	# sys.stderr = sys.stdout
+	sys.stderr = StringIO()
 	success = True
 	utility = file('utility.sfr', 'r').read().decode('utf-8')
 	try:
@@ -21,24 +24,26 @@ def compile():
 	except:
 		import traceback
 		success = False
-		print 'Error while compiling word %r' % Compiler.compiling
+		print >>sys.stderr, 'Error while compiling word %r' % Compiler.compiling
 		traceback.print_exc()
 	messages = sys.stdout.getvalue()
+	errors = sys.stderr.getvalue()
 	sys.stdout = old
-	#sys.stderr = olde
+	sys.stderr = olde
 	if success:
 		shaders = compiler.outcode
 		globals = dict((k, str(v)) for k, v in compiler.globals.items())
 		passes = compiler.passes
 		dimensions = compiler.dimensions
 		options = compiler.options
+		last_imports = compiler.imports
 	else:
 		shaders = dict(main='void main() { gl_FragColor = vec4(1., 0., 0., 1.); }')
 		globals = {}
 		passes = []
 		dimensions = {}
 		options = []
-	return success, shaders, globals, passes, dimensions, options, messages
+	return success, shaders, globals, passes, dimensions, options, messages, errors
 
 @app.route('/')
 def index():
@@ -46,9 +51,15 @@ def index():
 
 rand_push = random.randrange(1, 100)
 
+def getmtime_wrap(fn):
+	try:
+		return os.path.getmtime(fn)
+	except:
+		return 0
+
 @app.route('/refresh/<int:time>')
 def refresh(time=None):
-	mtime = int(max(map(os.path.getmtime, [fn, 'utility.sfr', 'compiler.py', 'live/serve.py']))) + rand_push
+	mtime = int(max(map(getmtime_wrap, [fn, 'utility.sfr', 'compiler.py', 'live/serve.py'] + last_imports))) + rand_push
 	if time == mtime:
 		return 'null'
 	return json.dumps([mtime] + list(compile()))

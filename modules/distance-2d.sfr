@@ -1,0 +1,23 @@
+:m circle ( p r )
+	p length r -
+;
+:m box ( p d )
+	p abs d - =t
+		t \max 0 min
+		t 0 max length
+	+
+;
+:m roundbox ( p r d )
+	 p d box r -
+;
+
+:m intersect \max ;
+:m union \min ;
+:m matintersect { .x } amax ;
+:m matunion { .x } amin ;
+:m subtract \{ neg max } ;
+
+:m repeat! ( p c ) p c mod .5 c * - ;
+:m repeat ( f p c ) p c repeat! dup p swap - *f ;
+:m scale ( f p s ) p s / *f s length * ;
+:m rotate ( f p a ) p a rotate-2d *f ;
