@@ -7,15 +7,6 @@ import[ distance-2d ]
 ;
 :m time iGlobalTime ;
 
-: arc ( p:vec2 d:vec3 -> float )
-		p [ -1 1 ] * cart->polar [ pi 2 / d .z ] - polar-norm
-		[
-			d .x dup tau eps - - 0 1 clamp inf * +
-			d .y
-		]
-	box
-;
-
 : bc ( p:vec2 r:float -> float )
 		p r box
 		p r circle
@@ -66,4 +57,4 @@ import[ distance-2d ]
 ;
 
 iResolution frag->position =p
-[ { distance-field .x } p gradient p texture 1 ] =gl_FragColor
+{ distance-field .x } p gradient p texture ->fragcolor
