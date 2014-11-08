@@ -220,19 +220,25 @@ class Compiler(object):
 		self.rename_i = 0
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 		self.deps = {}
+		self.gdeps = {}
 		self.mainWords = {}
 
-		for name, atoms in self.words.items():
-			self.words[name] = self.compile(name, atoms)
+		for name, atoms in (self.words.items() + self.macros.items()):
+			if name in self.words:
+				self.words[name] = self.compile(name, atoms)
 			self.deps[name] = deps = []
 			for atom in atoms:
 				if not isinstance(atom, unicode):
 					continue
-				if atom[0] in '&\\/':
+				if atom[0] in '&\\/=':
 					atom = atom[1:]
-				if atom in self.words and atom not in deps:
+				if (atom in self.words or atom in self.macros) and atom not in deps:
 					deps.append(atom)
-
+				elif atom in self.globals:
+					if atom not in self.gdeps:
+						self.gdeps[atom] = []
+					self.gdeps[atom].append(name)
+		
 		self.passes, eps = self.parsepasses()
 		eps.append('main')
 		for i, ep in enumerate(eps):
@@ -382,17 +388,6 @@ class Compiler(object):
 			self.emitnl('*/')
 			self.emitnl()
 
-		for name, elems in self.structs.items():
-			self.emitnl('struct %s {' % self.rename(name))
-			for name, type in elems:
-				self.emitnl('\t%s %s;' % (type.rename(), self.rename(name)))
-			self.emitnl('};')
-		for name, type in self.globals.items():
-			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
-				continue
-
-			self.emitnl(type.rename(), self.rename(name) + ';')
-
 		required = [main]
 		checked = []
 		while len(checked) < len(required):
@@ -404,6 +399,19 @@ class Compiler(object):
 						required.append(elem)
 				checked.append(dep)
 		dead = [name for name in self.words if name not in required]
+
+		for name, elems in self.structs.items():
+			self.emitnl('struct %s {' % self.rename(name))
+			for name, type in elems:
+				self.emitnl('\t%s %s;' % (type.rename(), self.rename(name)))
+			self.emitnl('};')
+		for name, type in self.globals.items():
+			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
+				continue
+			elif name not in self.gdeps or True not in [x not in dead for x in self.gdeps[name]]:
+				continue
+
+			self.emitnl(type.rename(), self.rename(name) + ';')
 
 		deps = depcopy(self.deps)
 		wordorder = []
@@ -419,7 +427,7 @@ class Compiler(object):
 					wordorder.append(name)
 					break
 		for name in wordorder:
-			if name in dead:
+			if name in dead or name not in self.words:
 				continue
 			locals, effects, localorder = self.words[name]
 			defd = self.wordtypes[name][2]
