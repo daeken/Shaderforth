@@ -163,6 +163,12 @@ foldops = {
 	'*' : lambda a, b: a * b, 
 	'/' : lambda a, b: a / b, 
 	'**' : lambda a, b: a ** b, 
+	'==' : lambda a, b: a == b,
+	'!=' : lambda a, b: a != b,
+	'>' : lambda a, b: a > b,
+	'<' : lambda a, b: a < b,
+	'>=' : lambda a, b: a >= b,
+	'<=' : lambda a, b: a <= b,
 }
 glfuncs = dict(
 	dot=2, 
@@ -850,11 +856,18 @@ class Compiler(object):
 					self.reduce(self.block())
 				else:
 					self.reduce(token[1:])
+			elif len(token) > 1 and token[0] == '?':
+				if token == '?{':
+					self.filter(self.block())
+				else:
+					self.filter(token[1:])
 			elif len(token) > 3 and token.startswith('$['):
 				self.range(token[2:-1].split(':'))
 			elif len(token) > 1 and token[0] == '!' and token != '!=':
 				self.dup()
 				self.atoms.insert([token[1:]])
+			elif len(token) > 1 and token[0] == '~':
+				self.condexec(token[1:])
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -918,33 +931,38 @@ class Compiler(object):
 				cdepth += 1
 			elif token == ')':
 				cdepth -= 1
-			elif cdepth == 0 and token in ('{', '\\{', '/{'):
+			elif cdepth == 0 and token in ('{', '\\{', '/{', '?{', '~{'):
 				depth += 1
 			elif cdepth == 0 and token == '}':
 				depth -= 1
 				if depth == 0:
 					break
 		atoms = atoms[:-1]
-		if len(atoms) and atoms[0] == '(':
-			spec = []
-			all_names = []
-			specstack = [spec]
-			stored = []
-			for i, atom in enumerate(atoms[1:]):
-				if atom == ')':
-					break
-				if atom == '[':
-					specstack.append([])
-					specstack[-2].append(specstack[-1])
-				elif atom == ']':
-					specstack.pop()
-				else:
-					if atom.startswith('$'):
-						stored.append(atom[1:])
-						atom = atom[1:]
-					specstack[-1].append(atom)
-					all_names.append(atom)
-			atoms = atoms[i+2:]
+		if len(atoms) and (atoms[0] == '(' or (atoms[0] != '(' and '_' in atoms)):
+			if atoms[0] != '(' and '_' in atoms:
+				spec = ['_']
+				all_names = spec
+				stored = []
+			else:
+				spec = []
+				all_names = []
+				specstack = [spec]
+				stored = []
+				for i, atom in enumerate(atoms[1:]):
+					if atom == ')':
+						break
+					if atom == '[':
+						specstack.append([])
+						specstack[-2].append(specstack[-1])
+					elif atom == ']':
+						specstack.pop()
+					else:
+						if atom.startswith('$'):
+							stored.append(atom[1:])
+							atom = atom[1:]
+						specstack[-1].append(atom)
+						all_names.append(atom)
+				atoms = atoms[i+2:]
 			name = self.tempname()
 			preamble = []
 			def recurspec(spec):
@@ -1048,6 +1066,18 @@ class Compiler(object):
 			tatoms.append(tname)
 			if i != 0:
 				tatoms += block.atoms
+		self.atoms.insert(tatoms)
+
+	def filter(self, name):
+		block = self.blockify(name)
+		tlist = self.rstack.pop()
+		assert tlist[0] == 'array'
+
+		tatoms = [u'[']
+		for elem in tlist[1:]:
+			tatoms += [elem, u'dup'] + block.atoms + [u'not', u'~drop']
+		tatoms.append(u']')
+
 		self.atoms.insert(tatoms)
 
 	def macroassign(self, name):
@@ -1278,13 +1308,15 @@ class Compiler(object):
 
 		if atom in self.macrolocals:
 			atom = self.macrolocals[atom]
+			if isinstance(atom, Block):
+				return atom
 
 		if atom in self.macros:
 			return Block(self, self.macros[atom])
 		elif atom in self.words or atom in bwords:
 			return Block(self, [atom])
 		else:
-			print >>sys.stderr, 'Unknown atom to blockify', atom
+			print >>sys.stderr, 'Unknown atom to blockify', `atom`
 			assert False
 
 	@word('times')
@@ -1307,6 +1339,13 @@ class Compiler(object):
 
 		for i in xrange(int(count)):
 			self.atoms.insert([i] + block.atoms)
+
+	def condexec(self, name):
+		block = self.blockify(name)
+		cond = self.rstack.pop()
+		assert cond in (True, False)
+		if cond:
+			self.atoms.insert(block.atoms)
 
 	@word('when')
 	def when(self):
@@ -1436,7 +1475,11 @@ class Compiler(object):
 
 	@word('not')
 	def not_(self):
-		self.rstack.push(('!', self.rstack.pop()))
+		val = self.rstack.pop()
+		if val in (True, False):
+			self.rstack.push(not val)
+		else:
+			self.rstack.push(('!', val))
 
 	@word('choose')
 	def choose(self):
