@@ -62,4 +62,5 @@ import[ distance-2d ]
 ;
 
 iResolution frag->position =p
-[ { distance-field .x } p gradient p texture 1 ] =gl_FragColor
+time 55 - 0 5 clamp 5 / vec3 =whiten
+[ { distance-field .x } p gradient p texture ] whiten + ->fragcolor

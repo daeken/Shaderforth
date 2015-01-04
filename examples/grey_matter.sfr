@@ -1,0 +1,19 @@
+import[ noise ]
+
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime ;
+
+iResolution frag->position !=p =op
+
+:m light [ 0.81 0.80 0.70 ] ;
+:m dark [ 0.19 0.15 0.06 ] ;
+
+p time .37 * sin 2 ** 3 * abs .5 + * time 2 / sin 2 * rotate-2d [ time .17 * time .37 * ] 5 * + =p
+&snoise-2d p gradient =v
+1 op [ .1 .2 ] - length - v 2 ** * 0 v 0 < select =spec
+spec spec 5 / spec 0 > select =spec
+light dark v 1 + 2 / mix spec .3 * + ->fragcolor

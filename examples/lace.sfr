@@ -1,0 +1,62 @@
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m iter 25 ;
+:m iter-delta ( )
+	( iGlobalTime 60.0 / sin 2.0 / 0.5 + =>v
+	333.0 333.33 v mix )
+	333.3333
+;
+
+: polar-norm ( p:vec2 -> vec2 ) p polar->cart cart->polar ;
+
+: move ( pos:vec2 t:float -> vec2 )
+	[
+		pos .x t + t pos .x * sin 0.1 * +
+		pos .y t pos .x * sin 0.5 * +
+	] polar-norm
+;
+
+:m grad ( f p )
+	[ 0.01 0.0 ] =h
+	p *f =>v
+	[
+		p h + *f  p h - *f -
+		p h .yx + *f  p h .yx - *f -
+	] 2.0 / h .x * length =>g
+	v abs g /
+;
+
+iResolution frag->position cart->polar =p
+iGlobalTime 1.0 + =t
+
+t iter - =t
+
+[ 0.0 0.5 ] cart->polar =start
+start =last
+
+[ 0.0 0.0 0.0 ] =color
+
+{ ( ii )
+	ii float =>i
+	start t move =cp
+	{ ( bp )
+			cp last bp point-distance-line
+			[ cp last bp ] /polar->cart flatten point-distance-line
+		min
+	} p grad =dist
+	cp =last
+	
+	0.0 0.001 0.1 dist / smoothstep 10.0 * =hit
+	0.0 0.001 0.1 dist / smoothstep 10.0 * =high
+	[
+		hit
+		high t 100.0 / sin abs *
+		hit 0.1 1.2 i iter / mix *
+	] color + =color
+	t iter-delta + =t
+} iter times
+
+color 2.0 / ->fragcolor

@@ -1,0 +1,40 @@
+import[ noise ]
+
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime 4 / ;
+
+iResolution frag->position =p
+
+:m c* ( $a $b ) [ a .x b .x * a .y b .y * - a .y b .x * a .x b .y * + ] ;
+:m csq dup c* ;
+:m c** ( x n ) [ n x .y.x atan2 * dup cos swap sin ] x length n ** * ;
+:m cmag length ;
+
+6 =>maxplunge
+
+[
+	0 [ -.746 .09997 ]
+	1 [ .275 .0077 ]
+	2 [ -.101 .837 ]
+	[ -.088 .6555 ]
+] !size 1 + =>count time maxplunge count * mod maxplunge 2 * / floor choose =point
+
+maxplunge time maxplunge 2 * mod maxplunge swap - abs - =mtime
+[ 0 0 ] =z
+p mtime mtime 1 + ** / point + =c
+
+200 =>numiters
+
+{
+	float numiters 1 - / =depth
+	z csq c + =z
+	&break z cmag 2 > when
+} numiters times
+
+	[ depth 1 1 ] hsv1->rgb
+	[ 0 0 0 ]
+z cmag 2 >= select ->fragcolor

@@ -123,6 +123,21 @@ class Code(object):
 	def __repr__(self):
 		return 'Code(parsed=%r, rest=%r)' % (self.elems[:self.i], self.elems[self.i:])
 
+class Block(object):
+	def __init__(self, compiler, atoms):
+		self.compiler = compiler
+		self.macrolocals = {k : v for k, v in compiler.macrolocals.items()}
+		self.localstack = []
+		self.atoms = ['__startclosure', self] + list(atoms) + ['__endclosure']
+
+	def invoke(self):
+		self.localstack.append({k : v for k, v in self.compiler.macrolocals.items()})
+		self.compiler.macrolocals.update(self.macrolocals)
+		self.compiler.blockstack.append(self)
+
+	def end(self):
+		self.compiler.macrolocals.update(self.localstack.pop())
+
 def word(symbol, consumes=0):
 	def dec(fn):
 		bwords[symbol] = consumes, fn
@@ -207,6 +222,7 @@ class Compiler(object):
 		self.code = utility + code
 		self.imports = []
 		self.loaded_modules = []
+		self.blockstack = []
 		self.tempi = 0
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -419,7 +435,7 @@ class Compiler(object):
 			for name, wdeps in deps.items():
 				made = True
 				for dname in wdeps:
-					if dname not in wordorder:
+					if name != dname and dname not in wordorder:
 						made = False
 						break
 				if made:
@@ -429,9 +445,9 @@ class Compiler(object):
 		for name in wordorder:
 			if name in dead or name not in self.words:
 				continue
-			locals, effects, localorder = self.words[name]
+			locals, effects, localorder, argnames = self.words[name]
 			defd = self.wordtypes[name][2]
-			effects = self.predeclare(effects)
+			effects = self.predeclare(effects, argnames)
 
 			if name == main:
 				if name in self.mainWords:
@@ -460,7 +476,7 @@ class Compiler(object):
 
 		return self.emitted
 
-	def predeclare(self, effects):
+	def predeclare(self, effects, argnames):
 		def vars_referenced(effect):
 			if not isinstance(effect, tuple) and not isinstance(effect, list):
 				return []
@@ -482,7 +498,7 @@ class Compiler(object):
 			elif effect[0] == 'endblock':
 				inside += decls.pop()
 				assert len(decls)
-			elif effect[0] == '=' and effect[1][0] == 'var':
+			elif effect[0] == '=' and effect[1][0] == 'var' and effect[1][1] not in argnames:
 				decls[-1].append(effect[1][1])
 			refs = vars_referenced(effect)
 			for ref in refs:
@@ -560,7 +576,7 @@ class Compiler(object):
 					preamble.append(len(spec) - i - 1)
 					preamble.append('take')
 				if elem in stored:
-					preamble.append('=macro_' + name + '_' + elem)
+					preamble.append('=$macro_' + name + '_' + elem)
 				else:
 					preamble.append('=>macro_' + name + '_' + elem)
 			for i, elem in enumerate(macro):
@@ -663,14 +679,14 @@ class Compiler(object):
 			words[name] = self.expandmacros(name, tokens, macros)
 
 		self.words = {}
-		locals, effects, localorder = self.compile('__globals', globals, pre=True)
+		locals, effects, localorder, argnames = self.compile('__globals', globals, pre=True)
 		self.globals.update(locals)
 
 		def subword(name):
 			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()[1:]))
 		sdefs = {}
 		for name, atoms in structs.items():
-			locals, effects, localorder = self.compile('__' + name, atoms, pre=True)
+			locals, effects, localorder, argnames = self.compile('__' + name, atoms, pre=True)
 			sdefs[name] = [(ename, locals[ename]) for ename in localorder]
 			word(name)(subword(name))
 			gltypes[name] = name
@@ -701,7 +717,7 @@ class Compiler(object):
 
 	def parsepasses(self):
 		self.dimensions = {}
-		locals, effects, localorder = self.compile('__passes', self.passes, pre=True)
+		locals, effects, localorder, argnames = self.compile('__passes', self.passes, pre=True)
 		passes = []
 		eps = []
 		for effect in effects:
@@ -780,6 +796,8 @@ class Compiler(object):
 			self.argtypes = dict((self.argnames[i], type) for i, type in enumerate(argtypes))
 			for name, type in self.argtypes.items():
 				self.locals[name] = Type(type)
+		else:
+			self.argnames = []
 
 		while self.atoms.peek() != None:
 			token = self.atoms.consume()
@@ -805,6 +823,8 @@ class Compiler(object):
 				self.call()
 			elif len(token) > 2 and token[:2] == '=>':
 				self.macroassign(token[2:])
+			elif len(token) > 2 and token[:2] == '=$':
+				self.macrocopy(token[2:])
 			elif len(token) > 1 and token[0] == '=':
 				self.assign(token[1:])
 			elif token == '=':
@@ -873,7 +893,7 @@ class Compiler(object):
 
 		self.effects = self.vectorize(self.effects)
 		
-		return self.locals, self.effects, self.localorder
+		return self.locals, self.effects, self.localorder, self.argnames
 
 	def vectorize(self, obj):
 		if isinstance(obj, list) and len(obj) > 0 and obj[0] == 'array':
@@ -907,33 +927,48 @@ class Compiler(object):
 		atoms = atoms[:-1]
 		if len(atoms) and atoms[0] == '(':
 			spec = []
+			all_names = []
+			specstack = [spec]
 			stored = []
-			for atom in atoms[1:]:
+			for i, atom in enumerate(atoms[1:]):
 				if atom == ')':
 					break
-				if atom.startswith('$'):
-					stored.append(atom[1:])
-					atom = atom[1:]
-				spec.append(atom)
-			atoms = atoms[2+len(spec):]
+				if atom == '[':
+					specstack.append([])
+					specstack[-2].append(specstack[-1])
+				elif atom == ']':
+					specstack.pop()
+				else:
+					if atom.startswith('$'):
+						stored.append(atom[1:])
+						atom = atom[1:]
+					specstack[-1].append(atom)
+					all_names.append(atom)
+			atoms = atoms[i+2:]
 			name = self.tempname()
 			preamble = []
-			for i, elem in enumerate(spec):
-				if i != len(spec) - 1:
-					preamble.append(len(spec) - i - 1)
-					preamble.append('take')
-				if elem in stored:
-					preamble.append('=macro_' + name + '_' + elem)
-				else:
-					preamble.append('=>macro_' + name + '_' + elem)
+			def recurspec(spec):
+				for i, elem in enumerate(spec):
+					if i != len(spec) - 1:
+						preamble.append(len(spec) - i - 1)
+						preamble.append('take')
+					if isinstance(elem, list):
+						preamble.append('flatten')
+						recurspec(elem)
+						continue
+					if elem in stored:
+						preamble.append('=$macro_' + name + '_' + elem)
+					else:
+						preamble.append('=>macro_' + name + '_' + elem)
+			recurspec(spec)
 			for i, elem in enumerate(atoms):
-				if elem in spec:
+				if elem in all_names:
 					atoms[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in spec:
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in all_names:
 					atoms[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
-		return atoms
+		return Block(self, atoms)
 
 	def tempname(self):
 		self.tempi += 1
@@ -976,16 +1011,27 @@ class Compiler(object):
 			self.veca()
 			tlist = self.rstack.pop()
 		
-		atoms = self.blockify(name)
+		block = self.blockify(name)
 		tatoms = []
 		tatoms.append(u'[')
 		for i, val in enumerate(tlist[1:]):
 			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
-			tatoms += atoms
+			tatoms += block.atoms
 		tatoms.append(u']')
 		self.atoms.insert(tatoms)
+
+	@word('enumerate')
+	def enumerate(self):
+		tlist = self.rstack.pop()
+		if tlist[0] != 'array':
+			self.rstack.push(tlist)
+			self.veca()
+			tlist = self.rstack.pop()
+		
+		tlist = ['array'] + [['array', float(i), e] for i, e in enumerate(tlist[1:])]
+		self.rstack.push(tlist)
 
 	def reduce(self, name):
 		tlist = self.rstack.pop()
@@ -994,18 +1040,34 @@ class Compiler(object):
 			self.veca()
 			tlist = self.rstack.pop()
 
-		atoms = self.blockify(name)
+		block = self.blockify(name)
 		tatoms = []
 		for i, val in enumerate(tlist[1:]):
 			tname = self.tempname()
 			self.macrolocals[tname] = val
 			tatoms.append(tname)
 			if i != 0:
-				tatoms += atoms
+				tatoms += block.atoms
 		self.atoms.insert(tatoms)
 
 	def macroassign(self, name):
 		self.macrolocals[name] = self.rstack.pop()
+
+	def macrocopy(self, name):
+		val = self.rstack.pop()
+
+		if val[0] == 'var' or val[0] == 'arg':
+			inline = True
+		elif val[0][0] == '.' and val[1][0] == 'var':
+			inline = True
+		else:
+			inline = False
+
+		if inline:
+			self.macrolocals[name] = val
+		else:
+			self.rstack.push(val)
+			self.assign(name)
 
 	def infertype(self, expr):
 		if isinstance(expr, tuple) or isinstance(expr, list):
@@ -1169,40 +1231,65 @@ class Compiler(object):
 	@word('=>[')
 	def arraymass(self):
 		names = []
+		nstack = [names]
 		while True:
 			token = self.atoms.consume()
-			if token == ']':
-				break
-			names.append(token)
+			if token == '[':
+				nstack.append([])
+				nstack[-2].append(nstack[-1])
+			elif token == ']':
+				nstack.pop()
+				if len(nstack) == 0:
+					break
+			else:
+				nstack[-1].append(token)
 		arr = self.rstack.pop()
-		for i, name in enumerate(names):
-			self.rstack.push(arr[i+1])
-			self.macroassign(name)
+
+		def assign(arr, names):
+			for i, name in enumerate(names):
+				if isinstance(name, list):
+					assign(arr[i+1], name)
+				else:
+					self.rstack.push(arr[i+1])
+					self.macroassign(name)
+
+		assign(arr, names)
 
 	@word('call')
 	def call(self):
 		name = self.rstack.pop()
 
-		atoms = self.blockify(name)
-		self.atoms.insert(atoms)
+		block = self.blockify(name)
+		self.atoms.insert(block.atoms)
+
+	@word('__startclosure', 1)
+	def startclosure(self, block):
+		block.invoke()
+
+	@word('__endclosure')
+	def endclosure(self):
+		self.blockstack.pop().end()
 
 	def blockify(self, atom):
-		if isinstance(atom, list):
+		if isinstance(atom, Block):
 			return atom
+		elif isinstance(atom, list):
+			return Block(self, atom)
 
 		if atom in self.macrolocals:
 			atom = self.macrolocals[atom]
 
 		if atom in self.macros:
-			return self.macros[atom]
+			return Block(self, self.macros[atom])
 		elif atom in self.words or atom in bwords:
-			return [atom]
+			return Block(self, [atom])
 		else:
 			print >>sys.stderr, 'Unknown atom to blockify', atom
 			assert False
 
 	@word('times')
 	def times(self):
+		self.int()
 		count = self.rstack.pop()
 		block = self.blockify(self.rstack.pop())
 		var = self.tempname()
@@ -1210,7 +1297,7 @@ class Compiler(object):
 		self.effects.append(('for', var, 0, count))
 		self.rstack.push('__term__')
 		self.rstack.push(('var', var))
-		self.atoms.insert(list(block) + ['__endblock'])
+		self.atoms.insert(block.atoms + ['__endblock'])
 		self.locals[var] = Type('int')
 
 	@word('mtimes')
@@ -1219,7 +1306,7 @@ class Compiler(object):
 		block = self.blockify(self.rstack.pop())
 
 		for i in xrange(int(count)):
-			self.atoms.insert([i] + list(block))
+			self.atoms.insert([i] + block.atoms)
 
 	@word('when')
 	def when(self):
@@ -1228,7 +1315,7 @@ class Compiler(object):
 
 		self.effects.append(('if', cond))
 		self.rstack.push('__term__')
-		self.atoms.insert(list(block) + ['__endblock'])
+		self.atoms.insert(block.atoms + ['__endblock'])
 
 	@word('if')
 	def if_(self):
@@ -1237,9 +1324,9 @@ class Compiler(object):
 		if_ = self.blockify(self.rstack.pop())
 
 		self.effects.append(('if', cond))
-		self.rstack.push(else_)
+		self.rstack.push(else_.atoms)
 		self.rstack.push('__term__')
-		self.atoms.insert(list(if_) + ['__else'])
+		self.atoms.insert(if_.atoms + ['__else'])
 
 	@word('__else')
 	def else_(self):
@@ -1256,7 +1343,7 @@ class Compiler(object):
 		self.effects.append(('else', ))
 		else_ = self.rstack.pop()
 		self.rstack.push('__term__')
-		self.atoms.insert(list(else_) + ass + ['__endblock'] + expand)
+		self.atoms.insert(else_ + ass + ['__endblock'] + expand)
 
 	@word('__endblock')
 	def endblock(self):
@@ -1300,7 +1387,7 @@ class Compiler(object):
 		self.rstack.push(arr)
 		self.rstack.push(None)
 		self.rstack.push('__term__')
-		self.atoms.insert(list(block) + ['__cond'])
+		self.atoms.insert(block.atoms + ['__cond'])
 
 	@word('__cond')
 	def __cond(self):
@@ -1335,7 +1422,7 @@ class Compiler(object):
 		self.rstack.push(arr)
 		self.rstack.push(vars)
 		self.rstack.push('__term__')
-		self.atoms.insert(list(block) + ['__cond'])
+		self.atoms.insert(block.atoms + ['__cond'])
 
 	@word('and')
 	def and_(self):
@@ -1438,9 +1525,9 @@ class Compiler(object):
 		_if = self.blockify(self.rstack.pop())
 
 		if depth == 0:
-			self.atoms.insert(self.expandmacros(None, _else, self.macros))
+			self.atoms.insert([depth] + self.expandmacros(None, _else.atoms, self.macros))
 		else:
-			atoms = self.expandmacros(None, _if, self.macros)
+			atoms = [depth] + self.expandmacros(None, _if.atoms, self.macros)
 			for i, atom in enumerate(atoms):
 				if atom == 'recur':
 					atoms[i-1] = depth - 1

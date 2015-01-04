@@ -2,7 +2,7 @@
 	p length r -
 ;
 :m box ( p d )
-	p abs d - =t
+	p abs d - =>t
 		t \max 0 min
 		t 0 max length
 	+
@@ -16,6 +16,7 @@
 
 :m intersect \max ;
 :m union \min ;
+:m smoothunion \{ .1 smin-poly } ;
 :m matintersect { .x } amax ;
 :m matunion { .x } amin ;
 :m subtract \{ neg max } ;

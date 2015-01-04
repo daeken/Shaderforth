@@ -1,0 +1,17 @@
+import[ noise ]
+
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime ;
+
+iResolution frag->position 1000 / =p
+:m light [ 0.87 0.64 0.25 ] ;
+:m dark [ 0.41 0.22 0.02 ] ;
+: val ( p:vec2 level:float -> float )
+	{ ( x ) x snoise-2d x pnoise-2d time sin level time 20 / * sin * abs mix } p gradient abs
+;
+$[4:16:1] !size =>t /{ ( x ) 2 x ** p * x + [ time .1337 * sin time .0879 * sin ] p+ x val } \+ t / =v
+dark light v abs 0 1 clamp mix ->fragcolor

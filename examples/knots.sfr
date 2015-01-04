@@ -1,0 +1,41 @@
+import[ distance-2d ]
+
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime ;
+
+iResolution frag->position =p
+
+: knot ( t:float -> vec3 )
+	[
+		t sin 2 t * sin 2 * +
+		t cos 2 t * cos 2 * -
+		3 t * sin neg
+	] 4 /
+;
+
+: distance-field ( p:vec2 -> vec2 )
+	[ 100 -100 ] =cur
+	100 =>iters
+	0 knot .xy =prev
+	{ ( i )
+		i #1 + float iters / tau * knot =kp
+		[ cur [ prev kp .xy p point-distance-line kp .z ] ] matunion =cur
+		kp .xy =prev
+	} iters times
+	cur
+;
+
+: material ( p:vec2 d:float m:float -> vec3 )
+	[ d m !neg ] 5 *
+;
+
+iResolution frag->position =p
+
+{ distance-field .x } p gradient =d
+	.1 d - 1000 * 0 1 clamp
+	p !distance-field .x.y material
+* ->fragcolor

@@ -4,13 +4,24 @@ attachments = {}
 mousepos = [0, 0]
 mousestate = [0, 0]
 
+viewdimensions = [800, 600]
+#viewdimensions = [600, 786]
+#viewdimensions = [300, 393]
+
 soptions = null
+
+start = 0
+paused = false
+paused_at = 0
+reversed = false
+reversed_at = 0
+render_once = false
 
 $(document).ready () ->
 	cvs = $('#cvs')[0]
-	cvs.width = cvs.style['width'] = 800
-	cvs.height = cvs.style['height'] = 450
-	ctx = cvs.getContext('webgl')
+	cvs.width = cvs.style['width'] = viewdimensions[0]
+	cvs.height = cvs.style['height'] = viewdimensions[1]
+	ctx = cvs.getContext('webgl', {preserveDrawingBuffer: true})
 	ctx.getExtension('OES_texture_float')
 
 	$('#cvs').mousemove (evt) ->
@@ -20,7 +31,47 @@ $(document).ready () ->
 		mousestate[0] = 1
 	$('#cvs').mouseup () ->
 		mousestate[0] = 0
-	
+
+	$('#screenshot').click () ->
+		url = cvs.toDataURL('image/png')
+		data = atob(url.substring('data:image/png;base64,'.length))
+		arr = new Uint8Array(data.length)
+		for i in [0...data.length]
+			arr[i] = data.charCodeAt(i)
+		blob = new Blob([arr.buffer], {type: 'image/png'})
+		uobj = window.URL.createObjectURL(blob)
+		a = $('#downloader')[0]
+		a.href = uobj
+		a.download = 'screenshot.png'
+		a.click()
+		window.URL.revokeObjectURL(uobj)
+
+	$('#pause').click () ->
+		paused = !paused
+		if paused
+			if reversed
+				paused_at -= (new Date) - start
+			else
+				paused_at += (new Date) - start
+			start = new Date
+		else
+			start = new Date
+
+	$('#restart').click () ->
+		start = new Date
+		paused_at = 0
+		reversed_at = 0
+		reversed = false
+		render_once = true
+
+	$('#reverse').click () ->
+		reversed = !reversed
+		if reversed
+			reversed_at += (new Date) - start
+		else
+			reversed_at -= (new Date) - start
+		start = new Date
+
 	refresh = ->
 		setTimeout refresh, 500
 		success = (data) ->
@@ -36,7 +87,7 @@ $(document).ready () ->
 	refresh()
 
 class Renderer
-	constructor: (@name, @target, @code, @dimensions=[800, 450]) ->
+	constructor: (@name, @target, @code, @dimensions) ->
 		@texture = null
 		@textures = []
 		if @name == 'main'
@@ -108,6 +159,10 @@ class Renderer
 		return @texture
 
 	render: (time) ->
+		if paused and not render_once
+			return
+		render_once = false
+
 		if @rtt != null
 			ctx.bindFramebuffer(ctx.FRAMEBUFFER, @rtt)
 			@fresh_texture()
@@ -118,8 +173,9 @@ class Renderer
 		ctx.vertexAttribPointer 0, 2, ctx.FLOAT, 0, 0, 0
 		ctx.enableVertexAttribArray(ctx.getAttribLocation @p, 'p')
 		ctx.useProgram(@p)
-		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), 800, 450, 0)
+		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), @dimensions[0], @dimensions[1], 0)
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iMouse'), mousepos[0], mousepos[1], mousestate[0], mousestate[1])
+		$('#time').text(time)
 		ctx.uniform1f(ctx.getUniformLocation(@p, 'iGlobalTime'), time)
 		date = new Date
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iDate'), date.getFullYear(), date.getMonth(), date.getDay(), date.getHours() * 60 * 60 + date.getMinutes() * 60 + date.getSeconds())
@@ -155,13 +211,16 @@ init = (shaders, globals, passes, dimensions) ->
 		if shaders[src] != undefined
 			renderers[dest] = new Renderer(src, dest, shaders[src], dimensions[dest])
 		attachments[dest] = null
-	main = new Renderer('main', null, shaders['main'])
+	main = new Renderer('main', null, shaders['main'], viewdimensions)
 
 	start = new Date
 	frame = ->
 		if clast != last
 			return
-		time = ((new Date) - start) / 1000
+		if reversed
+			time = ((start - (new Date)) + paused_at + reversed_at) / 1000
+		else
+			time = (paused_at + ((new Date) - start) + reversed_at) / 1000
 		for [dest, src] in passes
 			if renderers[dest] != undefined
 				attachments[dest] = renderers[dest].render time
