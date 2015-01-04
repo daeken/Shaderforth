@@ -199,6 +199,8 @@ Operators
 
 `+`, `-`, `*`, `/`, `**` (power operator), `and` (equivalent to `&&`), `or` (equivalent to `||`), `neg` (equivalent to unary `-`).
 
+Constant folding takes place automatically and no-op math (e.g. adding, subtracting, or multiplying by 0 or multiplying/dividing by 1) is removed.
+
 Built-ins
 ---------
 
@@ -281,6 +283,7 @@ These are all defined in `utility.sfr` and comprise the "standard library" for S
 	- `gradient ( f p )` -- Finds the gradient of a 2d isosurface, given a definition `f` and point `p`.  See [http://www.iquilezles.org/www/articles/distance/distance.htm](this article) for more information
 - Color operations
 	- `hsv->rgb ( hsv )` -- Converts a vector of HSV value into RGB.  H should be in the range 0-360, with S and V in the range 0-1.
+	- `hsv1->rgb ( hsv )` -- Works like `hsv->rgb`, except that H is in the range 0-1.
 	- `->fragcolor ( color )` -- Assigns `color` to `gl_FragColor`, expanding it to RGBA with constant alpha 1
 - Array operations
 	- `multi2 ( arr )` and `multi3 ( arr )` -- Turns a 1d array into a 2d or 3d array, respectively.

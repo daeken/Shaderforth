@@ -797,8 +797,46 @@ class Compiler(object):
 
 		if False not in map(eligible, operands):
 			return reduce(fold, operands)
-		else:
-			return tuple([op] + operands)
+
+		if op == '*':
+			if 0 in operands:
+				return float(0)
+			elif 1 in operands:
+				operands = [val for val in operands if val != 1]
+				if len(operands) == 0:
+					return float(1)
+				elif len(operands) == 1:
+					return operands[0]
+		elif op == '/':
+			while len(operands) and operands[-1] == 1:
+				operands = operands[:-1]
+			if len(operands) == 0:
+				return float(0)
+			elif len(operands) == 1:
+				return operands[0]
+		elif op == '**':
+			assert len(operands) == 2
+			if operands[0] == 0:
+				return float(0)
+			elif operands[0] == 1 or operands[1] == 0:
+				return float(1)
+			elif operands[1] == 1:
+				return operands[0]
+		elif op == '+':
+			operands = [val for val in operands if val != 0]
+			if len(operands) == 0:
+				return float(0)
+			elif len(operands) == 1:
+				return operands[0]
+		elif op == '-':
+			while len(operands) and operands[-1] == 0:
+				operands = operands[:-1]
+			if len(operands) == 0:
+				return float(0)
+			elif len(operands) == 1:
+				return operands[0]
+
+		return tuple([op] + operands)
 
 	def fold_swizzles(self, elem, swizzles):
 		def eligible(arr, top=False):
