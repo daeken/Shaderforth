@@ -572,25 +572,53 @@ class Compiler(object):
 		return code.elems
 
 	def parsewords(self, code):
-		def sanitize(name, macro):
-			spec = macrospec[name]
-			stored = [elem[1:] for elem in spec if elem.startswith('$')]
-			spec = [elem[1:] if elem.startswith('$') else elem for elem in spec]
-			preamble = []
-			for i, elem in enumerate(spec):
-				if i != len(spec) - 1:
-					preamble.append(len(spec) - i - 1)
-					preamble.append('take')
-				if elem in stored:
-					preamble.append('=$macro_' + name + '_' + elem)
+		def sanitize(name, atoms):
+			mspec = macrospec[name]
+			if len(atoms) and (len(mspec) or (not len(mspec) and '_' in atoms)):
+				if len(mspec) == 0:
+					spec = ['_']
+					all_names = spec
+					stored = []
 				else:
-					preamble.append('=>macro_' + name + '_' + elem)
-			for i, elem in enumerate(macro):
-				if elem in spec:
-					macro[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in spec:
-					macro[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
-			macros[name] = preamble + macro
+					spec = []
+					all_names = []
+					specstack = [spec]
+					stored = []
+					for i, atom in enumerate(mspec):
+						if atom == ')':
+							break
+						if atom == '[':
+							specstack.append([])
+							specstack[-2].append(specstack[-1])
+						elif atom == ']':
+							specstack.pop()
+						else:
+							if atom.startswith('$'):
+								stored.append(atom[1:])
+								atom = atom[1:]
+							specstack[-1].append(atom)
+							all_names.append(atom)
+				preamble = []
+				def recurspec(spec):
+					for i, elem in enumerate(spec):
+						if i != len(spec) - 1:
+							preamble.append(len(spec) - i - 1)
+							preamble.append('take')
+						if isinstance(elem, list):
+							preamble.append('flatten')
+							recurspec(elem)
+							continue
+						if elem in stored:
+							preamble.append('=$macro_' + name + '_' + elem)
+						else:
+							preamble.append('=>macro_' + name + '_' + elem)
+				recurspec(spec)
+				for i, elem in enumerate(atoms):
+					if elem in all_names:
+						atoms[i] = 'macro_' + name + '_' + elem
+					elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in all_names:
+						atoms[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
+				macros[name] = preamble + atoms
 
 		parsed = Code(self.preprocess(parse(code)))
 		parseloc = 0
@@ -658,11 +686,19 @@ class Compiler(object):
 				cur = macros[name] = []
 				macrospec[name] = []
 				in_macro = name
+				cdepth = 0
 				if parsed.peek() == '(':
 					parsed.consume()
-					while parsed.peek() != ')':
-						macrospec[name].append(parsed.consume().split(':')[0])
-					parsed.consume()
+					while True:
+						token = parsed.consume()
+						if token == '(':
+							cdepth += 1
+						elif token == ')':
+							if cdepth == 0:
+								break
+							cdepth -= 1
+						else:
+							macrospec[name].append(token)
 			elif token == ':globals':
 				modstack.append(cur)
 				cur = globals

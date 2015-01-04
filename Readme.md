@@ -104,15 +104,30 @@ Argument types and names are unnecessary -- you can leave off the whole signatur
 
 This compiles to the same code as before; the only thing that has changed is the way in which you can access arguments.
 
+It's possible to forego argument names while still retaining some of the benefits, though, in the case of 1-argument macros.  The sole argument can be referred to using `_` if no other names are provided.  For example, this is equivalent to `test2`:
+
+	:m test3 _ 5 + ;
+
 It is possible to force arguments to be stored in variables prior to use; this can prevent duplication of code due to multiple uses in a macro.  This is done with the `$` sigil:
 
-	:m test3 ( $left ) left 5 + left * ;
+	:m test4 ( $left ) left 5 + left * ;
 	foo 20 * test3 =baz
 
 Compiles to:
 
-	float macro_test3_left = foo * 20.;
-	baz = (macro_test3_left + 5.) * macro_test3_left;
+	float macro_test4_left = foo * 20.;
+	baz = (macro_test4_left + 5.) * macro_test4_left;
+
+Arguments to macros may also deconstruct arrays.  For example:
+
+	:m test5 ( [ a [ b c ] ] ) a b c * + ;
+	[ foo [ bar baz ] ] test5
+
+Compiles to:
+	foo + bar * baz
+
+The elements of each array are assigned according to their position in the argument spec.
+
 
 Locals and Macro Locals
 -----------------------
@@ -129,6 +144,8 @@ Arrays and vectors are equivalent and interchangable at compile-time.  The key d
 A simple example of `[ 1 2 3 4 ]` will compile to `vec4(1., 2., 3., 4.)`, as you would expect.  But because of the compile-time nature of these arrays, you can use the map and reduce operators.  The reduce operator, `\`, works like you would expect; it passes the accumulator value and each element of the arrays to the given block.  For instance, `[ 1 2 3 4 ] \+` becomes `1. + 2. + 3. + 4.`; `[ 1 2 3 4 ] \max` would become `max(max(max(1., 2.), 3.), 4.)`.
 
 The map operation, `/`, passes each element into a block to make a new array.  `[ 1 2 3 4 ] /sin` becomes `vec4(sin(1.), sin(2.), sin(3.), sin(4.))`.  This can be combined with the reduce operation: `[ 1 2 3 4 ] /sin \+` becomes `sin(1.) + sin(2.) + sin(3.) + sin(4.)`.
+
+The filter operation, `?`, conditionally includes/excludes elements at compile-time based on a predicate.  For instance, `[ 1 2 3 4 ] ?{ 2 >= }` is equivalent to `[ 2 3 4 ]`, as `1 2 >=` is false.  This must be evaluated at compile-time -- no runtime support is available.
 
 You can turn an array into a matrix using the `amat` word, or by closing your array definition with `]m`.
 
@@ -162,7 +179,7 @@ Like macros, you can give names to arguments if you desire:
 
 	foo { ( left ) 5 + }
 
-You can also use the `$` storage sigil on arguments, just like macros.
+You can also use the `$` storage sigil on arguments, just like macros.  The use of `_` and deconstructive arguments from macros also applies to blocks.
 
 A simple example of using blocks with map:
 
