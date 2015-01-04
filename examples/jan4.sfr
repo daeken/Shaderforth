@@ -1,0 +1,26 @@
+:globals
+	@vec3 uniform =iResolution
+	@float uniform =iGlobalTime
+;
+
+:m time iGlobalTime to + ;
+
+: frame ( to:float p:vec2 -> vec3 )
+	p length time + sin =d
+	p .y.x atan2 time + d time + sin + pi 3. / mod 3. * sin =a
+	a d + =>v
+	p length 4. * a time + - sin =m
+	a neg =>-a
+	[
+		v neg m d neg sin * time .1 * + sin *
+		v m * -a sin tan -a 3. * sin * 3. * time .5 * + sin *
+		v m mod
+	] -.1 1 clamp abs
+;
+
+iResolution frag->position =p
+
+$[-.05:+.05:.005] !size =>fc /{ p frame } \+ fc / =>ifa
+{ 0 p _ + frame } blur =>cfa
+
+cfa ifa + 2 / hsv1->rgb ->fragcolor
