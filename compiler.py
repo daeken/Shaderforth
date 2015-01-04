@@ -983,8 +983,23 @@ class Compiler(object):
 		return self.locals, self.effects, self.localorder, self.argnames
 
 	def vectorize(self, obj):
+		def flatten_arr(arr):
+			if not isinstance(arr, list) or len(arr) < 2 or arr[0] != 'array':
+				return self.vectorize(arr)
+
+			narr = ['array']
+			for i, val in enumerate(arr[1:]):
+				if isinstance(val, list):
+					if len(val) > 1 and val[0] == 'array':
+						narr += map(self.vectorize, val[1:])
+					else:
+						narr += map(self.vectorize, val)
+				else:
+					narr.append(self.vectorize(val))
+			return narr
+
 		if isinstance(obj, list) and len(obj) > 0 and obj[0] == 'array':
-			self.rstack.push(map(self.vectorize, obj))
+			self.rstack.push(flatten_arr(obj))
 			self.avec()
 			return self.rstack.pop()
 		elif isinstance(obj, tuple):
