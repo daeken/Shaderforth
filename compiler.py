@@ -574,7 +574,7 @@ class Compiler(object):
 	def parsewords(self, code):
 		def sanitize(name, atoms):
 			mspec = macrospec[name]
-			if len(atoms) and (len(mspec) or (not len(mspec) and '_' in atoms)):
+			if len(atoms) and (len(mspec) or (not len(mspec) and self.has_underscore(atoms))):
 				if len(mspec) == 0:
 					spec = ['_']
 					all_names = spec
@@ -898,6 +898,8 @@ class Compiler(object):
 				self.rstack.push(Type(token[1:]))
 			elif len(token) > 1 and token[0] == '&':
 				self.rstack.push(token[1:])
+			elif len(token) > 1 and token[0] == '$' and token[1] != '[':
+				self.rstack.push(('var', token[1:]))
 			elif len(token) > 1 and token[0] == '*' and token != '**':
 				self.rstack.push(self.macrolocals[token[1:]])
 				self.call()
@@ -1009,6 +1011,10 @@ class Compiler(object):
 		else:
 			return obj
 
+	def has_underscore(self, atoms):
+		prefix = '&\\/?*'
+		return '_' in atoms or True in [pfx + '_' in atoms for pfx in prefix]
+
 	def block(self):
 		depth = 1
 		cdepth = 0
@@ -1027,8 +1033,8 @@ class Compiler(object):
 				if depth == 0:
 					break
 		atoms = atoms[:-1]
-		if len(atoms) and (atoms[0] == '(' or (atoms[0] != '(' and '_' in atoms)):
-			if atoms[0] != '(' and '_' in atoms:
+		if len(atoms) and (atoms[0] == '(' or (atoms[0] != '(' and self.has_underscore(atoms))):
+			if atoms[0] != '(' and self.has_underscore(atoms):
 				spec = ['_']
 				all_names = spec
 				stored = []
@@ -1402,11 +1408,7 @@ class Compiler(object):
 
 		if atom in self.macros:
 			return Block(self, self.macros[atom])
-		elif atom in self.words or atom in bwords:
-			return Block(self, [atom])
-		else:
-			print >>sys.stderr, 'Unknown atom to blockify', `atom`
-			assert False
+		return Block(self, [atom])
 
 	@word('times')
 	def times(self):
@@ -1681,6 +1683,12 @@ class Compiler(object):
 			start += step
 
 		self.rstack.push(val)
+
+	@word('range')
+	def range_word(self):
+		self.int()
+		top = self.rstack.pop()
+		self.rstack.push(['array'] + list(range(0, top)))
 
 	@word('upto')
 	def upto(self):
