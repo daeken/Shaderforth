@@ -981,7 +981,6 @@ class Compiler(object):
 			self.effects.append(('return', self.rstack.pop()))
 
 		self.effects = self.vectorize(self.effects)
-		
 		return self.locals, self.effects, self.localorder, self.argnames
 
 	def vectorize(self, obj):
@@ -1301,7 +1300,6 @@ class Compiler(object):
 		for elem in self.rstack.pop()[1:]:
 			self.rstack.push(elem)
 
-	@word('avec')
 	def avec(self):
 		tlist = self.rstack.pop()
 		assert tlist[0] == 'array'
@@ -1317,7 +1315,6 @@ class Compiler(object):
 				assert False
 		self.rstack.push(tuple(['vec%i' % length] + tlist))
 
-	@word('veca')
 	def veca(self):
 		vec = self.ensure_stored(pop=True)
 		type = self.infertype(vec)
@@ -1383,7 +1380,7 @@ class Compiler(object):
 	@word('call')
 	def call(self):
 		name = self.rstack.pop()
-
+		
 		block = self.blockify(name)
 		self.atoms.insert(block.atoms)
 
@@ -1432,10 +1429,15 @@ class Compiler(object):
 			self.atoms.insert([i] + block.atoms)
 
 	def condexec(self, name):
+		def all_true(cond):
+			if isinstance(cond, list):
+				assert [elem in (True, False) for elem in cond[1:]]
+				return False not in map(all_true, cond[1:])
+			assert cond in (True, False)
+			return cond
 		block = self.blockify(name)
 		cond = self.rstack.pop()
-		assert cond in (True, False)
-		if cond:
+		if all_true(cond):
 			self.atoms.insert(block.atoms)
 
 	@word('when')
@@ -1566,9 +1568,17 @@ class Compiler(object):
 
 	@word('not')
 	def not_(self):
+		def foldable(cond):
+			if isinstance(cond, list):
+				return False not in [elem in (True, False) for elem in cond[1:]]
+			return cond in (True, False)
+		def not_all(cond):
+			if isinstance(cond, list):
+				return ['array'] + map(not_all, cond[1:])
+			return not cond
 		val = self.rstack.pop()
-		if val in (True, False):
-			self.rstack.push(not val)
+		if foldable(val):
+			self.rstack.push(not_all(val))
 		else:
 			self.rstack.push(('!', val))
 

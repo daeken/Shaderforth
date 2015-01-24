@@ -214,6 +214,7 @@ init = (shaders, globals, passes, dimensions) ->
 	main = new Renderer('main', null, shaders['main'], viewdimensions)
 
 	start = new Date
+	render_once = true
 	frame = ->
 		if clast != last
 			return

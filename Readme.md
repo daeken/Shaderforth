@@ -136,6 +136,8 @@ Locals are assigned with `=name`.  This is translated directly to GLSL assignmen
 
 Macro locals are assigned with `=>name` and exist only at compile-time.  This allows you to easily give names to your intermediate values, without bloating your compiled shaders.  In addition, you can store blocks, arrays, and other pieces of compile-time data in macro locals.
 
+To assign to a macro local while ensuring that the value is backed by a variable (to prevent pollution of the runtime namespace), you can use the `=$name` operation.
+
 Arrays and Vectors
 ------------------
 
@@ -191,6 +193,27 @@ Compiles to:
 
 You can also turn any word or macro into a block by use of `&name`; this makes it easy to pass existing words/macros.  Calling that block can be done using the `call` macro, or with `*arg`; this is equivalent to `arg call`.
 
+Conditional Compilation
+-----------------------
+
+The `~` operator allows conditional compilation.  When the item on the top of the stack is true (this must be evaluable at compile-time), the referenced item is executed.  For instance:
+
+    5 1 0 > ~{ 5 + }
+
+Would evaluate to `5 5 +` because `1 0 >` evaluates to `true`, and the condition is consumed by `~`.
+
+Variable Literals
+-----------------
+
+You can create a literal variable reference by the use of the `$` sigil on a name.  Variable literals can be useful for overloading existing variable names.  For instance:
+
+    :m gl_FragCoord $gl_FragCoord offset + ;
+    gl_FragCoord some-word
+
+Would compile to:
+
+    some_word(gl_FragCoord + offset);
+
 Built-ins and Library
 =====================
 
@@ -207,6 +230,7 @@ Built-ins
 - GLSL functions are all there as words (Incomplete)
 - `flatten` -- Given an array at the top of the stack, this will turn the elements into native stack elements
 - `dup` -- Duplicates the element at the top of the stack
+	- `!name` -- Equivalent to `dup name`
 - `swap` -- Swaps the top two elements of the stack
 - `take ( num )` -- Moves element `num` down from the top of the stack to the top
 - `call` -- Invokes a block
@@ -222,6 +246,9 @@ Built-ins
 - `cond ( cases )` and `choose ( cases )` -- See below
 - `size ( arr )` -- Returns the length of `arr`
 - `upto ( top )` -- Returns an array containing 0-top, exclusive
+- `enumerate ( arr )` -- Returns an enumerated array based on `arr`, where each element is turned into `[ index element ]`.  E.g. `[ 4 5 6 ] enumerate` is `[ [ 0 4 ] [ 1 5 ] [ 2 6 ] ]`
+- `return ( value )` -- Returns the given value
+- `return-nil` -- Returns from word with no value
 
 ### `cond` and `choose`
 
