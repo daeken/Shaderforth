@@ -12,6 +12,11 @@ Array::pop = (count=-1) ->
       results.unshift origpop.call(this)
     results
 
+Array::retrieve = (offset) ->
+  val = @[@.length - offset - 1]
+  @splice @.length - offset - 1, 1
+  val
+
 Array::include = (term) -> @indexOf(term) isnt -1
 
 Array::pretty_print = () ->
@@ -67,6 +72,12 @@ class Int
 
   toString: () ->
     '#' + @value.toString()
+
+toNative = (val) ->
+  if val instanceof Int or val instanceof Float
+    val.value
+  else
+    val
 
 class Block
   constructor: (@compiler, atoms) ->
@@ -404,6 +415,16 @@ class EffectCompiler
   'bword_return-nil': () ->
     @effectstack.top().push ['return']
 
+  bword_swap: () ->
+    [a, b] = @stack.pop 2
+    @stack.push b
+    @stack.push a
+  bword_drop: () ->
+    @stack.pop()
+  bword_take: () ->
+    offset = toNative @stack.pop()
+    @stack.push @stack.retrieve offset
+
 class CodeBuilder
   constructor: () ->
     @code = ''
@@ -489,4 +510,4 @@ class JSCompiler extends CodeBuilder
   'build_+': ([_, left, right]) ->
     "#{@build_one left} + #{@build_one right}"
 
-new JSCompiler().compile ': test ( -> int ) 3 return return-nil 5 ;'
+new JSCompiler().compile '1 2 3 4 5 4 take + + + + =foo'
