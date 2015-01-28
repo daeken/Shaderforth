@@ -285,7 +285,10 @@ class EffectCompiler
       first = false
     assert @effectstack.length == 1
 
-    if @stack.length == 1
+    if @words[name][1] == 'void'
+      assert @stack.length == 0
+    else
+      assert @stack.length == 1
       @effectstack[0].push ['return', @stack.pop()]
 
     @effectstack[0]
@@ -386,7 +389,7 @@ class EffectCompiler
     while @stack.pop() != '__term__'
       ;
 
-  'bword_call': () ->
+  bword_call: () ->
     block = @stack.pop()
     @tokens.insert block.atoms
 
@@ -395,6 +398,11 @@ class EffectCompiler
     block.invoke()
   'bword___endclosure': () ->
     @blockstack.pop().end()
+
+  bword_return: () ->
+    @effectstack.top().push ['return', @stack.pop()]
+  'bword_return-nil': () ->
+    @effectstack.top().push ['return']
 
 class CodeBuilder
   constructor: () ->
@@ -481,4 +489,4 @@ class JSCompiler extends CodeBuilder
   'build_+': ([_, left, right]) ->
     "#{@build_one left} + #{@build_one right}"
 
-new JSCompiler().compile '3 { 5 _ + } call =foo'
+new JSCompiler().compile ': test ( -> int ) 3 return return-nil 5 ;'
