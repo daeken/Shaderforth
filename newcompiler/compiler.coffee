@@ -44,11 +44,17 @@ class Tokens
   consume: () ->
     assert @offset < @length
     @tokens[@offset++]
+  consume_if: (token) ->
+    if @peek() == token
+      return @consume()
+    return false
   insert: (atoms) ->
     @tokens = @tokens[...@offset].concat(atoms).concat(@tokens[@offset...])
     @length += atoms.length
   end: () ->
     @offset >= @length
+  rest: () ->
+    @tokens[@offset...]
 
 class Float
   constructor: (@value) ->
@@ -84,11 +90,18 @@ class EffectCompiler
     @blockstack = []
 
     @tokens = @tokenize code
-    [@words, @macros, @globals] = @parseTop @tokens
+    [@words, @macros, @globals] = @parse_top @tokens
+    for name of @macros
+      continue if name[0] == '$'
+      @macros[name] = @rewrite_macro name
     for name of @words
       continue if name[0] == '$'
-      [args, effects] = @compile_word name
-      @words[name] = [args, @ssaize(effects, args)]
+      @words[name] = @parse_args name
+    for name of @words
+      continue if name[0] == '$'
+      [args, return_type, tokens] = @words[name]
+      effects = @compile_word name
+      @words[name] = [args, return_type, @ssaize(effects, args)]
 
   tokenize: (code) ->
     sub = (token) ->
@@ -104,7 +117,7 @@ class EffectCompiler
         token
     (sub(token) for token in code.split(/[ \t\n\r]+/))
 
-  parseTop: (tokens) ->
+  parse_top: (tokens) ->
     __globals = []
     words = {main : []}
     macros = {}
@@ -136,21 +149,119 @@ class EffectCompiler
         else
           stack.top().push token
 
+    if words.main.length == 0
+      delete words.main
+
     [words, macros, __globals]
 
+  rewrite_macro: (name) ->
+    @rewrite_block @macros[name], name
+
+  rewrite_block: (rtokens, name) ->
+    name = @tempname() if not name
+    tokens = new Tokens rtokens
+
+    namei = 0
+    specstack = [[]]
+    stored = []
+    all_names = []
+    if tokens.consume_if '('
+      while (token = tokens.consume()) != ')'
+        switch token
+          when '['
+            specstack.top().push nspec = []
+            specstack.push nspec
+          when ']'
+            specstack.pop()
+          else
+            if token[0] == '$'
+              token = token[1...]
+              stored.push token
+            specstack.top().push token
+            all_names.push token
+    else
+      prefixes = '&\\/?*'.split('').concat ['']
+      for prefix in prefixes
+        if rtokens.include(prefix + '_')
+          specstack = [['_']]
+          all_names = ['_']
+          break
+
+    result = []
+    recurspec = (spec) ->
+      for elem, i in spec
+        if i != spec.length - 1
+          result.push spec.length - i - 1
+          result.push 'take'
+        if elem instanceof Array
+          result.push 'flatten'
+          recurspec elem
+        else if stored.include elem
+          result.push "=$macro_#{name}_#{elem}"
+        else
+          result.push "=>macro_#{name}_#{elem}"
+    recurspec specstack[0]
+    while not tokens.end()
+      token = tokens.consume()
+      stoken = token.toString()
+      sigil = ''
+      if /\*\\\/&/.test stoken[0]
+        sigil = stoken[0]
+        stoken = stoken[1...]
+      if all_names.include stoken
+        result.push "#{sigil}macro_#{name}_#{token}"
+      else
+        result.push token
+    result
+
+  parse_args: (name) ->
+    tokens = new Tokens @words[name]
+    if tokens.consume() != '('
+      return [[], 'void', @words[name]]
+
+    args = []
+    return_type = 'void'
+    args_done = false
+    preamble = []
+    while true
+      token = tokens.consume()
+      if token == ')'
+        break
+      else if token == '->'
+        args_done = true
+      else if args_done
+        return_type = token
+        assert tokens.peek() == ')'
+      else
+        if token.indexOf(':') != -1
+          [aname, type] = token.split ':'
+          args.push [aname, type]
+        else
+          aname = @tempname()
+          args.push [aname, token]
+          preamble.push aname
+    tokens.insert preamble
+
+    [args, return_type, tokens.rest()]
+
   compile_word: (name) ->
-    @tokens = new Tokens(@words[name])
+    @tokens = new Tokens @words[name][2]
     @stack = []
     @locals = {}
     @macrolocals = {}
     @effectstack = [[]]
 
+    for [aname, type] in @words[name][0]
+      @locals[aname] = type
+    
     while not @tokens.end()
       token = @tokens.consume()
       if token instanceof Float or token instanceof Int
         @stack.push token
       else if @['bword_' + token]
         @['bword_' + token]()
+      else if @macros[token]
+        @tokens.insert @macros[token]
       else if token == '{'
         @stack.push @parse_block()
       else if token[...2] == '=>'
@@ -159,18 +270,22 @@ class EffectCompiler
         @assign token[1...]
       else if @macrolocals[token]
         @stack.push @macrolocals[token]
+      else if @words[token]
+        params = (@stack.pop() for elem in @words[token][0])
+        @stack.push ['call', token, params]
       else if @locals[token] or @globals[token]
         @stack.push ['var', token]
       else
         console.log 'Unhandled token in word ' + name + ': ' + JSON.stringify(token)
         console.log 'Stack:', @stack
         assert false
-
-    #console.log @stack
+      first = false
     assert @effectstack.length == 1
-    #@effectstack[0].pretty_print()
 
-    [[], @effectstack[0]]
+    if @stack.length == 1
+      @effectstack[0].push ['return', @stack.pop()]
+
+    @effectstack[0]
 
   parse_block: () ->
     block_tokens = []
@@ -289,6 +404,19 @@ class CodeBuilder
     @code += '  '.repeat(--@depth) + '}\n'
     return
 
+  compile: (code) ->
+    @compiler = new EffectCompiler()
+    @compiler.compile code
+    #console.log JSON.stringify @compiler.words
+    for name of @compiler.words
+      continue if name[0] == '$'
+
+      @build_word name
+    console.log @code
+
+  build_word: (name) ->
+    @vars_defined = (name for name in @compiler.words[name][0])
+
   build_all: (effects) ->
     for effect in effects
       built = @build_one effect
@@ -303,11 +431,39 @@ class CodeBuilder
       assert false
     @['build_' + effect[0]] effect
 
+  build_var: ([_, name, __]) ->
+    name
+
+  build_return: (effect) ->
+    if effect.length == 1
+      'return'
+    else
+      "return #{@build_one effect[1]}"
+
+  build_call: ([_, name, args]) ->
+    "return #{name}(#{(@build_one arg for arg in args).join ', '})"
+
+class JSCompiler extends CodeBuilder
+  build_word: (name) ->
+    super
+    @pushblock "function #{name}(#{(arg[0] for arg in @compiler.words[name][0]).join ', '})"
+    @build_all @compiler.words[name][2]
+    @popblock()
+
   build_assign: ([_, name, value]) ->
-    "#{name[0]} = #{@build_one value}"
+    if @vars_defined.include name[0]
+      "#{name[0]} = #{@build_one value}"
+    else
+      @vars_defined.push name[0]
+      "var #{name[0]} = #{@build_one value}"
 
   build_for: ([_, name, start, end]) ->
-    @pushblock "for(#{name[0]} = #{@build_one start}; #{name[0]} < #{@build_one end}; #{name[0]}++)"
+    if not @vars_defined.include name[0]
+      @vars_defined.push name[0]
+      def = 'var '
+    else
+      def = ''
+    @pushblock "for(#{def}#{name[0]} = #{@build_one start}; #{name[0]} < #{@build_one end}; #{name[0]}++)"
 
   build_block: (block) ->
     @build_all block[1...]
@@ -318,23 +474,4 @@ class CodeBuilder
   'build_+': ([_, left, right]) ->
     "#{@build_one left} + #{@build_one right}"
 
-  build_var: ([_, name, __]) ->
-    name
-
-class JSCompiler extends CodeBuilder
-  compile: (code) ->
-    @compiler = new EffectCompiler()
-    @compiler.compile code
-    #console.log JSON.stringify @compiler.words
-    for name of @compiler.words
-      continue if name[0] == '$'
-
-      @build_word name
-    console.log @code
-
-  build_word: (name) ->
-    @pushblock 'function ' + name + '()'
-    @build_all @compiler.words[name][1]
-    @popblock()
-
-new JSCompiler().compile '5 =>foo 0 =temp { temp + =temp } 10 times temp foo + =bar temp 6 + =temp bar 7 + =bar'
+new JSCompiler().compile ':m foo 3 + _ + ; : test ( int -> int ) 5 + 17 foo ;'
