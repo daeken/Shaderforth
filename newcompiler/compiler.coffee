@@ -158,7 +158,7 @@ class EffectCompiler
     @rewrite_block @macros[name], name
 
   rewrite_block: (rtokens, name) ->
-    name = @tempname() if not name
+    name = "block_#{@tempname()}" if not name
     tokens = new Tokens rtokens
 
     namei = 0
@@ -272,7 +272,10 @@ class EffectCompiler
         @stack.push @macrolocals[token]
       else if @words[token]
         params = (@stack.pop() for elem in @words[token][0])
-        @stack.push ['call', token, params]
+        if @words[token][1] != 'void'
+          @stack.push ['call', token, params]
+        else
+          @effectstack.top().push ['call', token, params]
       else if @locals[token] or @globals[token]
         @stack.push ['var', token]
       else
@@ -298,7 +301,7 @@ class EffectCompiler
         when '{', '/{', '\\{', '?{', '~{'
           block_depth++
       block_tokens.push token if block_depth > 0
-    new Block @, block_tokens
+    new Block @, @rewrite_block(block_tokens)
 
   ssaize: (effects, args) ->
     ivars = {}
@@ -382,6 +385,10 @@ class EffectCompiler
     @effectstack.pop()
     while @stack.pop() != '__term__'
       ;
+
+  'bword_call': () ->
+    block = @stack.pop()
+    @tokens.insert block.atoms
 
   'bword___startclosure': () ->
     block = @tokens.consume()
@@ -474,4 +481,4 @@ class JSCompiler extends CodeBuilder
   'build_+': ([_, left, right]) ->
     "#{@build_one left} + #{@build_one right}"
 
-new JSCompiler().compile ':m foo 3 + _ + ; : test ( int -> int ) 5 + 17 foo ;'
+new JSCompiler().compile '3 { 5 _ + } call =foo'
