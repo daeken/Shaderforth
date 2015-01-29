@@ -323,6 +323,22 @@ class EffectCompiler
 
     [@effectstack[0], @locals]
 
+  infer_type: (atom) ->
+    return atom if atom instanceof Type
+    return new Type('float') if atom instanceof Float
+    return new Type('int') if atom instanceof Int
+    switch atom[0]
+      when 'var'
+        if @globals[atom[1]]
+          @globals[atom[1]]
+        else if @locals[atom[1]]
+          @locals[atom[1]]
+        else
+          console.log 'Unknown atom to infer_type:', atom
+          assert false
+      else
+        console.log 'Unknown atom to infer_type:', atom
+
   parse_block: () ->
     block_tokens = []
     block_depth = 1
@@ -388,9 +404,10 @@ class EffectCompiler
     'temp_' + @tempi++
 
   assign: (name) ->
+    value = @stack.pop()
     if not @globals[name] and not @locals[name]
-      @locals[name] = 'int' # XXX: infer type here
-    @effectstack.top().push ['assign', name, @stack.pop()]
+      @locals[name] = @infer_type value
+    @effectstack.top().push ['assign', name, value]
   macro_assign: (name) ->
     @macrolocals[name] = @stack.pop()
 
