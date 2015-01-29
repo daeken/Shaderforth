@@ -73,6 +73,18 @@ class Int
   toString: () ->
     '#' + @value.toString()
 
+class Type
+  constructor: (@name) ->
+    @attributes = []
+
+  add_attribute: (attr) ->
+    @attributes.push attr if not @attributes.include attr
+    @
+
+  toString: () ->
+    [@name].concat(@attributes).join ' '
+
+
 toNative = (val) ->
   if val instanceof Int or val instanceof Float
     val.value
@@ -111,8 +123,13 @@ class EffectCompiler
     for name of @words
       continue if name[0] == '$'
       [args, return_type, tokens] = @words[name]
-      effects = @compile_word name
-      @words[name] = [args, return_type, @ssaize(effects, args)]
+      [effects, locals] = @compile_word name
+      @words[name] = {
+        args: args, 
+        return_type: return_type, 
+        locals: locals, 
+        effects: @ssaize(effects, args)
+      }
 
   tokenize: (code) ->
     sub = (token) ->
@@ -281,6 +298,8 @@ class EffectCompiler
         @assign token[1...]
       else if @macrolocals[token]
         @stack.push @macrolocals[token]
+      else if token[0] == '@'
+        @stack.push new Type token[1...]
       else if @words[token]
         params = (@stack.pop() for elem in @words[token][0])
         if @words[token][1] != 'void'
@@ -302,7 +321,7 @@ class EffectCompiler
       assert @stack.length == 1
       @effectstack[0].push ['return', @stack.pop()]
 
-    @effectstack[0]
+    [@effectstack[0], @locals]
 
   parse_block: () ->
     block_tokens = []
@@ -451,7 +470,8 @@ class CodeBuilder
     console.log @code
 
   build_word: (name) ->
-    @vars_defined = (name for name in @compiler.words[name][0])
+    @vars_defined = (aname for aname in @compiler.words[name].args)
+    @locals = @compiler.words[name].locals
 
   build_all: (effects) ->
     for effect in effects
@@ -482,8 +502,8 @@ class CodeBuilder
 class JSCompiler extends CodeBuilder
   build_word: (name) ->
     super
-    @pushblock "function #{name}(#{(arg[0] for arg in @compiler.words[name][0]).join ', '})"
-    @build_all @compiler.words[name][2]
+    @pushblock "function #{name}(#{(arg[0] for arg in @compiler.words[name].args).join ', '})"
+    @build_all @compiler.words[name].effects
     @popblock()
 
   build_assign: ([_, name, value]) ->
@@ -510,4 +530,35 @@ class JSCompiler extends CodeBuilder
   'build_+': ([_, left, right]) ->
     "#{@build_one left} + #{@build_one right}"
 
-new JSCompiler().compile '1 2 3 4 5 4 take + + + + =foo'
+class GLSLCompiler extends CodeBuilder
+  build_word: (name) ->
+    super
+    @pushblock "#{@compiler.words[name].return_type} #{name}(#{(arg[1] + ' ' + arg[0] for arg in @compiler.words[name].args).join ', '})"
+    @build_all @compiler.words[name].effects
+    @popblock()
+
+  build_assign: ([_, name, value]) ->
+    if @vars_defined.include name[0]
+      "#{name[0]} = #{@build_one value}"
+    else
+      @vars_defined.push name[0]
+      "#{@locals[name[0]]} #{name[0]} = #{@build_one value}"
+
+  build_for: ([_, name, start, end]) ->
+    if not @vars_defined.include name[0]
+      @vars_defined.push name[0]
+      def = 'var '
+    else
+      def = ''
+    @pushblock "for(#{def}#{name[0]} = #{@build_one start}; #{name[0]} < #{@build_one end}; #{name[0]}++)"
+
+  build_block: (block) ->
+    @build_all block[1...]
+    @popblock()
+
+  build_phi: () ->
+
+  'build_+': ([_, left, right]) ->
+    "#{@build_one left} + #{@build_one right}"
+
+new GLSLCompiler().compile ': test ( float -> float ) =bar 5 bar + ;'
