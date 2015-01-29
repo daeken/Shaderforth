@@ -122,13 +122,13 @@ class EffectCompiler
       @words[name] = @parse_args name
     for name of @words
       continue if name[0] == '$'
-      [args, return_type, tokens] = @words[name]
+      word = @words[name]
       [effects, locals] = @compile_word name
       @words[name] = {
-        args: args, 
-        return_type: return_type, 
+        args: word.args, 
+        return_type: word.return_type, 
         locals: locals, 
-        effects: @ssaize(effects, args)
+        effects: @ssaize(effects, word.args)
       }
 
   tokenize: (code) ->
@@ -245,7 +245,7 @@ class EffectCompiler
   parse_args: (name) ->
     tokens = new Tokens @words[name]
     if tokens.consume() != '('
-      return [[], 'void', @words[name]]
+      return {args: [], return_type: 'void', tokens: @words[name]}
 
     args = []
     return_type = 'void'
@@ -270,16 +270,16 @@ class EffectCompiler
           preamble.push aname
     tokens.insert preamble
 
-    [args, return_type, tokens.rest()]
+    {args: args, return_type: return_type, tokens: tokens.rest()}
 
   compile_word: (name) ->
-    @tokens = new Tokens @words[name][2]
+    @tokens = new Tokens @words[name].tokens
     @stack = []
     @locals = {}
     @macrolocals = {}
     @effectstack = [[]]
 
-    for [aname, type] in @words[name][0]
+    for [aname, type] in @words[name].args
       @locals[aname] = type
     
     while not @tokens.end()
@@ -301,7 +301,7 @@ class EffectCompiler
       else if token[0] == '@'
         @stack.push new Type token[1...]
       else if @words[token]
-        params = (@stack.pop() for elem in @words[token][0])
+        params = @stack.pop @words[token].args.length
         if @words[token][1] != 'void'
           @stack.push ['call', token, params]
         else
@@ -315,7 +315,7 @@ class EffectCompiler
       first = false
     assert @effectstack.length == 1
 
-    if @words[name][1] == 'void'
+    if @words[name].return_type == 'void'
       assert @stack.length == 0
     else
       assert @stack.length == 1
@@ -336,8 +336,14 @@ class EffectCompiler
         else
           console.log 'Unknown atom to infer_type:', atom
           assert false
+      when 'call'
+        assert @words[atom[1]]
+        @words[atom[1]].return_type
+      when '+', '-', '*', '/'
+        @infer_type atom[1]
       else
         console.log 'Unknown atom to infer_type:', atom
+        assert false
 
   parse_block: () ->
     block_tokens = []
@@ -514,7 +520,14 @@ class CodeBuilder
       "return #{@build_one effect[1]}"
 
   build_call: ([_, name, args]) ->
-    "return #{name}(#{(@build_one arg for arg in args).join ', '})"
+    "#{name}(#{(@build_one arg for arg in args).join ', '})"
+
+  'build_+': ([_, left, right]) ->
+    "#{@build_one left} + #{@build_one right}"
+  'build_*': ([_, left, right]) ->
+    "#{@build_one left} * #{@build_one right}"
+
+  build_phi: () ->
 
 class JSCompiler extends CodeBuilder
   build_word: (name) ->
@@ -542,11 +555,6 @@ class JSCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-  build_phi: () ->
-
-  'build_+': ([_, left, right]) ->
-    "#{@build_one left} + #{@build_one right}"
-
 class GLSLCompiler extends CodeBuilder
   build_word: (name) ->
     super
@@ -573,9 +581,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-  build_phi: () ->
-
-  'build_+': ([_, left, right]) ->
-    "#{@build_one left} + #{@build_one right}"
-
-new GLSLCompiler().compile ': test ( float -> float ) =bar 5 bar + ;'
+code = ': test ( float float -> float ) * =bar 5 bar + ; 10 22 test =temp'
+new GLSLCompiler().compile code
+new JSCompiler().compile code
