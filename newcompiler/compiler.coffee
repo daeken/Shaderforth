@@ -473,6 +473,13 @@ class EffectCompiler
 
     @tokens.insert block.atoms.concat ['__endblock']
 
+  bword_mtimes: () ->
+    [block, count] = @stack.pop 2
+    tokens = []
+    for i in [0...toNative count]
+      tokens = tokens.concat [new Int i].concat block.atoms
+    @tokens.insert tokens
+
   bword_when: () ->
     [block, cond] = @stack.pop 2
     @effectstack.top().push ['if', cond]
@@ -645,6 +652,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = '5 =foo { foo 1 + =foo } { 0 =foo } foo 5 == if'
+code = '{ =foo } 10 mtimes'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
