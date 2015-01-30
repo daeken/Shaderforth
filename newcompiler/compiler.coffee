@@ -447,27 +447,56 @@ class EffectCompiler
     else
       @assign name
 
-  'bword_+': () -> @stack.push ['+'].concat @stack.pop 2
-  'bword_-': () -> @stack.push ['-'].concat @stack.pop 2
-  'bword_*': () -> @stack.push ['*'].concat @stack.pop 2
-  'bword_/': () -> @stack.push ['/'].concat @stack.pop 2
-  'bword_<': () -> @stack.push ['<'].concat @stack.pop 2
+  'bword_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
+  'bword_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
+  'bword_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
+  'bword_/': () -> @stack.push ['bop', '/'].concat @stack.pop 2
+  'bword_<': () -> @stack.push ['bop', '<'].concat @stack.pop 2
+  'bword_>': () -> @stack.push ['bop', '>'].concat @stack.pop 2
+  'bword_==': () -> @stack.push ['bop', '=='].concat @stack.pop 2
 
-  'bword_times': () ->
+  push_block: () ->
+    nblock = ['block']
+    @effectstack.top().push nblock
+    @effectstack.push nblock
+    nblock
+
+  bword_times: () ->
     [block, count] = @stack.pop 2
     tname = @tempname()
 
     @effectstack.top().push ['for', tname, new Int(0), count]
-    nblock = ['block']
-    @effectstack.top().push nblock
-    @effectstack.push nblock
+    @push_block()
     @stack.push '__term__'
     @stack.push ['var', tname]
     @locals[tname] = 'int'
 
     @tokens.insert block.atoms.concat ['__endblock']
 
-  'bword___endblock': () ->
+  bword_when: () ->
+    [block, cond] = @stack.pop 2
+    @effectstack.top().push ['if', cond]
+    @push_block()
+    @stack.push '__term__'
+
+    @tokens.insert block.atoms.concat ['__endblock']
+
+  bword_if: () ->
+    [if_, else_, cond] = @stack.pop 3
+    @effectstack.top().push ['if', cond]
+    @push_block()
+    @stack.push else_
+    @stack.push '__term__'
+    @tokens.insert if_.atoms.concat ['__endblock', '__else']
+
+  bword___else: () ->
+    else_ = @stack.pop()
+    @effectstack.top().push ['else']
+    @push_block()
+    @stack.push '__term__'
+    @tokens.insert else_.atoms.concat ['__endblock']
+
+  bword___endblock: () ->
     @effectstack.pop()
     while @stack.pop() != '__term__'
       ;
@@ -476,10 +505,10 @@ class EffectCompiler
     block = @stack.pop()
     @tokens.insert block.atoms
 
-  'bword___startclosure': () ->
+  bword___startclosure: () ->
     block = @tokens.consume()
     block.invoke()
-  'bword___endclosure': () ->
+  bword___endclosure: () ->
     @blockstack.pop().end()
 
   bword_return: () ->
@@ -554,10 +583,13 @@ class CodeBuilder
   build_call: ([_, name, args]) ->
     "#{name}(#{(@build_one arg for arg in args).join ', '})"
 
-  'build_+': ([_, left, right]) ->
-    "#{@build_one left} + #{@build_one right}"
-  'build_*': ([_, left, right]) ->
-    "#{@build_one left} * #{@build_one right}"
+  'build_bop': ([_, op, left, right]) ->
+    "#{@build_one left} #{op} #{@build_one right}"
+
+  build_if: ([_, cond]) ->
+    @pushblock "if(#{@build_one cond})"
+  build_else: () ->
+    @pushblock "else"
 
   build_phi: () ->
 
@@ -613,6 +645,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = '5 =$foo foo 6 + =$bar'
+code = '5 =foo { foo 1 + =foo } { 0 =foo } foo 5 == if'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
