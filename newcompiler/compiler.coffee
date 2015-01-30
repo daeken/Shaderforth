@@ -305,9 +305,9 @@ class EffectCompiler
       else if token[0] == '@'
         @stack.push new Type token[1...]
       else if token[0] == '\\' and token.length > 1
-          @reduce token[1...]
+          @reduce @parse_block token[1...]
       else if token[0] == '/' and token.length > 1
-          @map token[1...]
+          @map @parse_block token[1...]
       else if @words[token]
         params = @stack.pop @words[token].args.length
         if @words[token][1] != 'void'
@@ -383,7 +383,9 @@ class EffectCompiler
         assert false
     length
 
-  parse_block: () ->
+  parse_block: (init='{') ->
+    if init != '{'
+      return new Block @, [init]
     block_tokens = []
     block_depth = 1
     while block_depth > 0
@@ -483,12 +485,6 @@ class EffectCompiler
     else
       @assign name
 
-  blockify: (block) ->
-    if block == '{'
-      @parse_block()
-    else
-      new Block @, [block]
-
   avec: () ->
     list = @stack.pop()
     assert list[0] == 'list'
@@ -496,7 +492,6 @@ class EffectCompiler
     @stack.push ['vec', size].concat list[1...]
 
   reduce: (block) ->
-    block = @blockify block
     list = @stack.pop()
     if list[0] != 'list'
       @stack.push list
@@ -513,7 +508,6 @@ class EffectCompiler
     @tokens.insert tatoms
 
   map: (block) ->
-    block = @blockify block
     list = @stack.pop()
     if list[0] != 'list'
       @stack.push list
