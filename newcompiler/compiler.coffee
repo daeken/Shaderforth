@@ -294,6 +294,8 @@ class EffectCompiler
         @stack.push @parse_block()
       else if token[...2] == '=>'
         @macro_assign token[2...]
+      else if token[...2] == '=$'
+        @macro_store token[2...]
       else if token[0] == '='
         @assign token[1...]
       else if @macrolocals[token]
@@ -409,10 +411,17 @@ class EffectCompiler
   tempname: () ->
     'temp_' + @tempi++
 
+  is_stored: (val) ->
+    (
+      val instanceof Int or val instanceof Float or 
+      val[0] == 'var' or
+      (val[0] == 'swizzle' and val[1][0] == 'var')
+    )
+
   ensure_stored: (pop=false) ->
     top = @stack.pop()
 
-    if top[0] == 'var' or (top[0] == 'swizzle' and top[1][0] == 'var')
+    if @is_stored top
       if not pop
         @stack.push top
       top
@@ -432,6 +441,11 @@ class EffectCompiler
     @effectstack.top().push ['assign', name, value]
   macro_assign: (name) ->
     @macrolocals[name] = @stack.pop()
+  macro_store: (name) ->
+    if @is_stored @stack.top()
+      @macrolocals[name] = @stack.pop()
+    else
+      @assign name
 
   'bword_+': () -> @stack.push ['+'].concat @stack.pop 2
   'bword_-': () -> @stack.push ['-'].concat @stack.pop 2
@@ -599,6 +613,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = '5 5 + dup =foo =bar foo dup =hax =omg'
+code = '5 =$foo foo 6 + =$bar'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
