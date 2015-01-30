@@ -409,6 +409,22 @@ class EffectCompiler
   tempname: () ->
     'temp_' + @tempi++
 
+  ensure_stored: (pop=false) ->
+    top = @stack.pop()
+
+    if top[0] == 'var' or (top[0] == 'swizzle' and top[1][0] == 'var')
+      if not pop
+        @stack.push top
+      top
+    else
+      name = "tvar_#{@tempname()}"
+      tvar = ['var', name]
+      @locals[name] = @infer_type top
+      @effectstack.top().push ['assign', name, top]
+      if not pop
+        @stack.push tvar
+      tvar
+
   assign: (name) ->
     value = @stack.pop()
     if not @globals[name] and not @locals[name]
@@ -466,6 +482,8 @@ class EffectCompiler
   bword_take: () ->
     offset = toNative @stack.pop()
     @stack.push @stack.retrieve offset
+  bword_dup: () ->
+    @stack.push @ensure_stored()
 
 class CodeBuilder
   constructor: () ->
@@ -581,6 +599,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = ': test ( float float -> float ) * =bar 5 bar + ; 10 22 test =temp'
+code = '5 5 + dup =foo =bar foo dup =hax =omg'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
