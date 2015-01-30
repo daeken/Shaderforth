@@ -275,6 +275,7 @@ class EffectCompiler
   compile_word: (name) ->
     @tokens = new Tokens @words[name].tokens
     @stack = []
+    @stackstack = []
     @locals = {}
     @macrolocals = {}
     @effectstack = [[]]
@@ -302,6 +303,10 @@ class EffectCompiler
         @stack.push @macrolocals[token]
       else if token[0] == '@'
         @stack.push new Type token[1...]
+      else if token[0] == '\\' and token.length > 1
+          @reduce token[1...]
+      else if token[0] == '/' and token.length > 1
+          @map token[1...]
       else if @words[token]
         params = @stack.pop @words[token].args.length
         if @words[token][1] != 'void'
@@ -341,8 +346,12 @@ class EffectCompiler
       when 'call'
         assert @words[atom[1]]
         @words[atom[1]].return_type
-      when '+', '-', '*', '/'
-        @infer_type atom[1]
+      when 'bop'
+        switch atom[1]
+          when '+', '-', '*', '/'
+            @infer_type atom[2]
+          when '<', '>', '==', '<=', '>='
+            new Type 'bool'
       else
         console.log 'Unknown atom to infer_type:', atom
         assert false
@@ -447,6 +456,45 @@ class EffectCompiler
     else
       @assign name
 
+  blockify: (block) ->
+    if block == '{'
+      @parse_block()
+    else
+      new Block @, [block]
+
+  reduce: (block) ->
+    block = @blockify block
+    list = @stack.pop()
+    if list[0] != 'list'
+      @stack.push list
+      @veca()
+      list = @stack.pop()
+
+    tatoms = []
+    for val, i in list[1...]
+      tname = @tempname()
+      @macrolocals[tname] = val
+      tatoms.push tname
+      if i != 0
+        tatoms = tatoms.concat block.atoms
+    @tokens.insert tatoms
+
+  map: (block) ->
+    block = @blockify block
+    list = @stack.pop()
+    if list[0] != 'list'
+      @stack.push list
+      @veca()
+      list = @stack.pop()
+
+    tatoms = ['[']
+    for val, i in list[1...]
+      tname = @tempname()
+      @macrolocals[tname] = val
+      tatoms.push tname
+      tatoms = tatoms.concat block.atoms
+    @tokens.insert tatoms.concat [']']
+
   'bword_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
   'bword_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
   'bword_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
@@ -534,6 +582,14 @@ class EffectCompiler
     @stack.push @stack.retrieve offset
   bword_dup: () ->
     @stack.push @ensure_stored()
+
+  'bword_[': () ->
+    @stackstack.push @stack
+    @stack = []
+  'bword_]': () ->
+    list = ['list'].concat @stack
+    @stack = @stackstack.pop()
+    @stack.push list
 
 class CodeBuilder
   constructor: () ->
@@ -652,6 +708,6 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = '{ =foo } 10 mtimes'
+code = '[ 5 6 7 ] /{ 5 - } \\+ =foo'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
