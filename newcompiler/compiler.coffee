@@ -1,5 +1,6 @@
 assert = require 'cassert'
 
+Array::is_array = true
 Array::top = () -> @[@length-1]
 
 origpop = Array::pop
@@ -328,7 +329,17 @@ class EffectCompiler
       assert @stack.length == 1
       @effectstack[0].push ['return', @stack.pop()]
 
-    [@effectstack[0], @locals]
+    [@vectorize(@effectstack[0]), @locals]
+
+  vectorize: (effect) ->
+    return effect if not effect.is_array or not effect.length
+
+    if effect[0] == 'list'
+      @stack.push effect
+      @avec()
+      @stack.pop()
+    else
+      @vectorize elem for elem in effect
 
   infer_type: (atom) ->
     return atom if atom instanceof Type
@@ -352,9 +363,25 @@ class EffectCompiler
             @infer_type atom[2]
           when '<', '>', '==', '<=', '>='
             new Type 'bool'
+      when 'list'
+        new Type 'vec' + (@list_length atom)
+      when 'vec'
+        new Type 'vec' + atom[1]
       else
         console.log 'Unknown atom to infer_type:', atom
         assert false
+
+  list_length: (list) ->
+    types = (@infer_type elem for elem in list[1..])
+    length = 0
+    for type in types
+      if /^vec[0-9]+$/.test type.name
+        length += parseInt type[3...]
+      else if type.name == 'float'
+        length += 1
+      else
+        assert false
+    length
 
   parse_block: () ->
     block_tokens = []
@@ -461,6 +488,12 @@ class EffectCompiler
       @parse_block()
     else
       new Block @, [block]
+
+  avec: () ->
+    list = @stack.pop()
+    assert list[0] == 'list'
+    size = @list_length list
+    @stack.push ['vec', size].concat list[1...]
 
   reduce: (block) ->
     block = @blockify block
@@ -609,7 +642,6 @@ class CodeBuilder
   compile: (code) ->
     @compiler = new EffectCompiler()
     @compiler.compile code
-    #console.log JSON.stringify @compiler.words
     for name of @compiler.words
       continue if name[0] == '$'
 
@@ -682,6 +714,9 @@ class JSCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
+  build_vec: (effect) ->
+    "[#{(@build_one elem for elem in effect[2...]).join ', '}]"
+
 class GLSLCompiler extends CodeBuilder
   build_word: (name) ->
     super
@@ -708,6 +743,9 @@ class GLSLCompiler extends CodeBuilder
     @build_all block[1...]
     @popblock()
 
-code = '[ 5 6 7 ] /{ 5 - } \\+ =foo'
+  build_vec: (effect) ->
+    "vec#{effect[1]}(#{(@build_one elem for elem in effect[2...]).join ', '})"
+
+code = '[ 5 6 7 ] /{ 1 + } =foo'
 new GLSLCompiler().compile code
 new JSCompiler().compile code
