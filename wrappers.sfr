@@ -1,0 +1,3 @@
+:wrap min ( T T -> T ) ;
+:wrap atan ( T -> T ) ;
+:wrap atan2 ( T T -> T ) atan ;
