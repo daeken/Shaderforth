@@ -83,7 +83,7 @@ class Type
     @
 
   toString: () ->
-    [@name].concat(@attributes).join ' '
+    @attributes.concat([@name]).join ' '
 
 
 toNative = (val) ->
@@ -114,7 +114,10 @@ class EffectCompiler
     @blockstack = []
 
     @tokens = @tokenize code
-    [@words, @macros, @globals] = @parse_top @tokens
+    [@words, @macros, globals] = @parse_top @tokens
+    @words['__globals'] = {args: [], return_type: 'void', tokens: globals}
+    [_, @globals] = @compile_word '__globals'
+    delete @words['__globals']
     for name of @macros
       continue if name[0] == '$'
       @macros[name] = @rewrite_macro name
@@ -275,15 +278,15 @@ class EffectCompiler
 
   compile_word: (name) ->
     @tokens = new Tokens @words[name].tokens
+
     @stack = []
     @stackstack = []
     @locals = {}
     @macrolocals = {}
     @effectstack = [[]]
-
     for [aname, type] in @words[name].args
       @locals[aname] = type
-    
+
     while not @tokens.end()
       token = @tokens.consume()
       if token instanceof Float or token instanceof Int
@@ -305,9 +308,11 @@ class EffectCompiler
       else if token[0] == '@'
         @stack.push new Type token[1...]
       else if token[0] == '\\' and token.length > 1
-          @reduce @parse_block token[1...]
+        @reduce @parse_block token[1...]
       else if token[0] == '/' and token.length > 1
-          @map @parse_block token[1...]
+        @map @parse_block token[1...]
+      else if token[...2] == '$[' and token[token.length-1] == ']'
+        @range_literal token[2...-1]
       else if @words[token]
         params = @stack.pop @words[token].args.length
         if @words[token][1] != 'void'
@@ -522,6 +527,23 @@ class EffectCompiler
       tatoms = tatoms.concat block.atoms
     @tokens.insert tatoms.concat [']']
 
+  range_literal: (token) ->
+    token = token.split(/:/).join ' '
+    if token.length == 1
+      tokens = "0 #{token} 1 range"
+    else if token.length == 2
+      tokens = "#{token} 1 range"
+    else
+      tokens = "#{token} range"
+    @tokens.insert @tokenize tokens
+
+  bword_range: () ->
+    [start, end, step] = @stack.pop 3
+    list = ['list']
+    for num in [toNative(start)...toNative(end)] by toNative(step)
+      list.push new Float num
+    @stack.push list
+
   'bword_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
   'bword_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
   'bword_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
@@ -597,6 +619,10 @@ class EffectCompiler
     @effectstack.top().push ['return', @stack.pop()]
   'bword_return-nil': () ->
     @effectstack.top().push ['return']
+  bword_continue: () ->
+    @effectstack.top().push ['continue']
+  bword_break: () ->
+    @effectstack.top().push ['break']
 
   bword_swap: () ->
     [a, b] = @stack.pop 2
@@ -618,6 +644,9 @@ class EffectCompiler
     @stack = @stackstack.pop()
     @stack.push list
 
+  bword_uniform: () ->
+    @stack.top().add_attribute 'uniform'
+
 class CodeBuilder
   constructor: () ->
     @code = ''
@@ -636,11 +665,15 @@ class CodeBuilder
   compile: (code) ->
     @compiler = new EffectCompiler()
     @compiler.compile code
+    @build_head()
     for name of @compiler.words
       continue if name[0] == '$'
 
       @build_word name
     console.log @code
+
+  build_head: () ->
+
 
   build_word: (name) ->
     @vars_defined = (aname for aname in @compiler.words[name].args)
@@ -668,12 +701,14 @@ class CodeBuilder
       'return'
     else
       "return #{@build_one effect[1]}"
+  build_continue: () -> 'continue'
+  build_break: () -> 'break'
 
   build_call: ([_, name, args]) ->
     "#{name}(#{(@build_one arg for arg in args).join ', '})"
 
   'build_bop': ([_, op, left, right]) ->
-    "#{@build_one left} #{op} #{@build_one right}"
+    "(#{@build_one left} #{op} #{@build_one right})"
 
   build_if: ([_, cond]) ->
     @pushblock "if(#{@build_one cond})"
@@ -712,6 +747,11 @@ class JSCompiler extends CodeBuilder
     "[#{(@build_one elem for elem in effect[2...]).join ', '}]"
 
 class GLSLCompiler extends CodeBuilder
+  build_head: () ->
+    for name, type of @compiler.globals
+      continue if name[0] == '$'
+      @pushstmt "#{type.toString()} #{name}"
+
   build_word: (name) ->
     super
     @pushblock "#{@compiler.words[name].return_type} #{name}(#{(arg[1] + ' ' + arg[0] for arg in @compiler.words[name].args).join ', '})"
@@ -740,6 +780,15 @@ class GLSLCompiler extends CodeBuilder
   build_vec: (effect) ->
     "vec#{effect[1]}(#{(@build_one elem for elem in effect[2...]).join ', '})"
 
-code = '[ 5 6 7 ] /{ 1 + } =foo'
+code = """
+:globals
+  @vec3 uniform =iResolution
+  @float uniform =iGlobalTime
+;
+
+5 6 + =gl_FragColor
+"""
+console.log '// GLSL'
 new GLSLCompiler().compile code
+console.log '// Javascript'
 new JSCompiler().compile code
