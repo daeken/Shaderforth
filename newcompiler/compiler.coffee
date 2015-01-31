@@ -1,4 +1,5 @@
 assert = require 'cassert'
+fs = require 'fs'
 
 Array::is_array = true
 Array::top = () -> @[@length-1]
@@ -114,7 +115,11 @@ class EffectCompiler
     @blockstack = []
 
     @tokens = @tokenize code
-    [@words, @macros, globals] = @parse_top @tokens
+    [@words, @macros, wrappers, globals] = @parse_top @tokens
+    @wrappers = {}
+    for name, tokens of wrappers
+      continue if name[0] == '$'
+      @add_wrapper name, tokens
     @words['__globals'] = {args: [], return_type: 'void', tokens: globals}
     [_, @globals] = @compile_word '__globals'
     delete @words['__globals']
@@ -153,6 +158,7 @@ class EffectCompiler
     __globals = []
     words = {main : []}
     macros = {}
+    wrappers = {}
     stack = [words.main]
     i = 0
     while i < tokens.length
@@ -170,6 +176,10 @@ class EffectCompiler
           name = tokens[i++]
           words[name] = []
           stack.push words[name]
+        when ':wrap'
+          name = tokens[i++]
+          wrappers[name] = []
+          stack.push wrappers[name]
         when ':m'
           name = tokens[i++]
           macros[name] = []
@@ -184,7 +194,7 @@ class EffectCompiler
     if words.main.length == 0
       delete words.main
 
-    [words, macros, __globals]
+    [words, macros, wrappers, __globals]
 
   rewrite_macro: (name) ->
     @rewrite_block @macros[name], name
@@ -276,6 +286,28 @@ class EffectCompiler
 
     {args: args, return_type: return_type, tokens: tokens.rest()}
 
+  add_wrapper: (name, tokens) ->
+    tokens = new Tokens tokens
+    args = []
+    return_type = 'void'
+    native_name = name
+    assert tokens.consume() == '('
+    while true
+      token = tokens.consume()
+      if token == ')'
+        break
+      else if token == '->'
+        args_done = true
+      else if args_done
+        return_type = token
+        assert tokens.peek() == ')'
+      else
+        args.push token
+    native_name = tokens.consume() if not tokens.end()
+    assert tokens.end()
+
+    @wrappers[name] = {args: args, return_type: return_type, native_name: native_name}
+
   compile_word: (name) ->
     @tokens = new Tokens @words[name].tokens
 
@@ -291,8 +323,8 @@ class EffectCompiler
       token = @tokens.consume()
       if token instanceof Float or token instanceof Int
         @stack.push token
-      else if @['bword_' + token]
-        @['bword_' + token]()
+      else if @['word_' + token]
+        @['word_' + token]()
       else if @macros[token]
         @tokens.insert @macros[token]
       else if token == '{'
@@ -315,10 +347,16 @@ class EffectCompiler
         @range_literal token[2...-1]
       else if @words[token]
         params = @stack.pop @words[token].args.length
-        if @words[token][1] != 'void'
+        if @words[token].return_type != 'void'
           @stack.push ['call', token, params]
         else
           @effectstack.top().push ['call', token, params]
+      else if @wrappers[token]
+        params = @stack.pop @wrappers[token].args.length
+        if @wrappers[token].return_type != 'void'
+          @stack.push ['call', @wrappers[token].native_name, params]
+        else
+          @effectstack.top().push ['call', @wrappers[token].native_name, params]
       else if @locals[token] or @globals[token]
         @stack.push ['var', token]
       else
@@ -360,8 +398,16 @@ class EffectCompiler
           console.log 'Unknown atom to infer_type:', atom
           assert false
       when 'call'
-        assert @words[atom[1]]
-        @words[atom[1]].return_type
+        if @words[atom[1]]
+          @words[atom[1]].return_type
+        else if @wrappers[atom[1]]
+          wrapper = @wrappers[atom[1]]
+          if wrapper.return_type == 'T'
+            @infer_type atom[2][0]
+          else
+            wrapper.return_type
+        else
+          assert false
       when 'bop'
         switch atom[1]
           when '+', '-', '*', '/'
@@ -537,20 +583,20 @@ class EffectCompiler
       tokens = "#{token} range"
     @tokens.insert @tokenize tokens
 
-  bword_range: () ->
+  word_range: () ->
     [start, end, step] = @stack.pop 3
     list = ['list']
     for num in [toNative(start)...toNative(end)] by toNative(step)
       list.push new Float num
     @stack.push list
 
-  'bword_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
-  'bword_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
-  'bword_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
-  'bword_/': () -> @stack.push ['bop', '/'].concat @stack.pop 2
-  'bword_<': () -> @stack.push ['bop', '<'].concat @stack.pop 2
-  'bword_>': () -> @stack.push ['bop', '>'].concat @stack.pop 2
-  'bword_==': () -> @stack.push ['bop', '=='].concat @stack.pop 2
+  'word_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
+  'word_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
+  'word_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
+  'word_/': () -> @stack.push ['bop', '/'].concat @stack.pop 2
+  'word_<': () -> @stack.push ['bop', '<'].concat @stack.pop 2
+  'word_>': () -> @stack.push ['bop', '>'].concat @stack.pop 2
+  'word_==': () -> @stack.push ['bop', '=='].concat @stack.pop 2
 
   push_block: () ->
     nblock = ['block']
@@ -558,7 +604,7 @@ class EffectCompiler
     @effectstack.push nblock
     nblock
 
-  bword_times: () ->
+  word_times: () ->
     [block, count] = @stack.pop 2
     tname = @tempname()
 
@@ -570,14 +616,14 @@ class EffectCompiler
 
     @tokens.insert block.atoms.concat ['__endblock']
 
-  bword_mtimes: () ->
+  word_mtimes: () ->
     [block, count] = @stack.pop 2
     tokens = []
     for i in [0...toNative count]
       tokens = tokens.concat [new Int i].concat block.atoms
     @tokens.insert tokens
 
-  bword_when: () ->
+  word_when: () ->
     [block, cond] = @stack.pop 2
     @effectstack.top().push ['if', cond]
     @push_block()
@@ -585,7 +631,7 @@ class EffectCompiler
 
     @tokens.insert block.atoms.concat ['__endblock']
 
-  bword_if: () ->
+  word_if: () ->
     [if_, else_, cond] = @stack.pop 3
     @effectstack.top().push ['if', cond]
     @push_block()
@@ -593,58 +639,58 @@ class EffectCompiler
     @stack.push '__term__'
     @tokens.insert if_.atoms.concat ['__endblock', '__else']
 
-  bword___else: () ->
+  word___else: () ->
     else_ = @stack.pop()
     @effectstack.top().push ['else']
     @push_block()
     @stack.push '__term__'
     @tokens.insert else_.atoms.concat ['__endblock']
 
-  bword___endblock: () ->
+  word___endblock: () ->
     @effectstack.pop()
     while @stack.pop() != '__term__'
       ;
 
-  bword_call: () ->
+  word_call: () ->
     block = @stack.pop()
     @tokens.insert block.atoms
 
-  bword___startclosure: () ->
+  word___startclosure: () ->
     block = @tokens.consume()
     block.invoke()
-  bword___endclosure: () ->
+  word___endclosure: () ->
     @blockstack.pop().end()
 
-  bword_return: () ->
+  word_return: () ->
     @effectstack.top().push ['return', @stack.pop()]
-  'bword_return-nil': () ->
+  'word_return-nil': () ->
     @effectstack.top().push ['return']
-  bword_continue: () ->
+  word_continue: () ->
     @effectstack.top().push ['continue']
-  bword_break: () ->
+  word_break: () ->
     @effectstack.top().push ['break']
 
-  bword_swap: () ->
+  word_swap: () ->
     [a, b] = @stack.pop 2
     @stack.push b
     @stack.push a
-  bword_drop: () ->
+  word_drop: () ->
     @stack.pop()
-  bword_take: () ->
+  word_take: () ->
     offset = toNative @stack.pop()
     @stack.push @stack.retrieve offset
-  bword_dup: () ->
+  word_dup: () ->
     @stack.push @ensure_stored()
 
-  'bword_[': () ->
+  'word_[': () ->
     @stackstack.push @stack
     @stack = []
-  'bword_]': () ->
+  'word_]': () ->
     list = ['list'].concat @stack
     @stack = @stackstack.pop()
     @stack.push list
 
-  bword_uniform: () ->
+  word_uniform: () ->
     @stack.top().add_attribute 'uniform'
 
 class CodeBuilder
@@ -786,9 +832,15 @@ code = """
   @float uniform =iGlobalTime
 ;
 
-5 6 + =gl_FragColor
+[ 5 6 ] dup min =foo
+5 6 atan2 =bar
+5 6 / atan =baz
 """
-console.log '// GLSL'
-new GLSLCompiler().compile code
-console.log '// Javascript'
-new JSCompiler().compile code
+
+basedir = __dirname.split('/')[...-1].join '/'
+fs.readFile basedir + '/wrappers.sfr', (err, data) ->
+  code = data+'\n'+code
+  console.log '// GLSL'
+  new GLSLCompiler().compile code
+  console.log '// Javascript'
+  new JSCompiler().compile code
