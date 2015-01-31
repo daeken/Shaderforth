@@ -24,9 +24,9 @@ Array::include = (term) -> @indexOf(term) isnt -1
 Array::pretty_print = () ->
   switch @length
     when 0
-      '[]'
+      console.log '[]'
     when 1
-      JSON.stringify elem
+      console.log JSON.stringify elem
     else
       console.log '['
       for elem in @
@@ -67,13 +67,14 @@ class Float
   constructor: (@value) ->
 
   toString: () ->
-    @value.toString()
+    val = @value.toFixed(5)
+    val.replace /0+$/, ''
 
 class Int
   constructor: (@value) ->
 
   toString: () ->
-    '#' + @value.toString()
+    @value.toString()
 
 class Type
   constructor: (@name) ->
@@ -107,6 +108,11 @@ class Block
 
   end: () ->
     @localstack.pop().$copyinto @compiler.macrolocals
+
+builtin_vars = {
+  gl_FragCoord: 'vec4', 
+  gl_FragColor: 'vec4'
+}
 
 class EffectCompiler
   compile: (code) ->
@@ -317,7 +323,7 @@ class EffectCompiler
     @macrolocals = {}
     @effectstack = [[]]
     for [aname, type] in @words[name].args
-      @locals[aname] = type
+      @locals[aname] = new Type type
 
     while not @tokens.end()
       token = @tokens.consume()
@@ -339,6 +345,11 @@ class EffectCompiler
         @stack.push @macrolocals[token]
       else if token[0] == '@'
         @stack.push new Type token[1...]
+      else if token[0] == '.'
+        @swizzle token[1...]
+      else if token[0] == '!' and token.length > 1
+        @word_dup()
+        @tokens.insert @parse_block(token[1...]).atoms
       else if token[0] == '\\' and token.length > 1
         @reduce @parse_block token[1...]
       else if token[0] == '/' and token.length > 1
@@ -357,7 +368,7 @@ class EffectCompiler
           @stack.push ['call', @wrappers[token].native_name, params]
         else
           @effectstack.top().push ['call', @wrappers[token].native_name, params]
-      else if @locals[token] or @globals[token]
+      else if @locals[token] or @globals[token] or builtin_vars[token]
         @stack.push ['var', token]
       else
         console.log 'Unhandled token in word ' + name + ': ' + JSON.stringify(token)
@@ -380,9 +391,9 @@ class EffectCompiler
     if effect[0] == 'list'
       @stack.push effect
       @avec()
-      @stack.pop()
+      @vectorize @stack.pop()
     else
-      @vectorize elem for elem in effect
+      @vectorize(elem) for elem in effect
 
   infer_type: (atom) ->
     return atom if atom instanceof Type
@@ -394,18 +405,20 @@ class EffectCompiler
           @globals[atom[1]]
         else if @locals[atom[1]]
           @locals[atom[1]]
+        else if builtin_vars[atom[1]]
+          new Type builtin_vars[atom[1]]
         else
           console.log 'Unknown atom to infer_type:', atom
           assert false
       when 'call'
         if @words[atom[1]]
-          @words[atom[1]].return_type
+          new Type @words[atom[1]].return_type
         else if @wrappers[atom[1]]
           wrapper = @wrappers[atom[1]]
           if wrapper.return_type == 'T'
             @infer_type atom[2][0]
           else
-            wrapper.return_type
+            new Type wrapper.return_type
         else
           assert false
       when 'bop'
@@ -414,10 +427,18 @@ class EffectCompiler
             @infer_type atom[2]
           when '<', '>', '==', '<=', '>='
             new Type 'bool'
+      when 'neg'
+        @infer_type atom[1]
       when 'list'
         new Type 'vec' + (@list_length atom)
       when 'vec'
         new Type 'vec' + atom[1]
+      when 'swizzle'
+        assert @infer_type(atom[2]).name[...3] == 'vec'
+        if atom[1].length == 1
+          new Type 'float'
+        else
+          new Type 'vec' + atom[1].length
       else
         console.log 'Unknown atom to infer_type:', atom
         assert false
@@ -427,7 +448,7 @@ class EffectCompiler
     length = 0
     for type in types
       if /^vec[0-9]+$/.test type.name
-        length += parseInt type[3...]
+        length += parseInt type.name[3...]
       else if type.name == 'float'
         length += 1
       else
@@ -504,7 +525,8 @@ class EffectCompiler
     (
       val instanceof Int or val instanceof Float or 
       val[0] == 'var' or
-      (val[0] == 'swizzle' and val[1][0] == 'var')
+      (val[0] == 'swizzle' and val[1][0] == 'var') or
+      val[0] == 'list'
     )
 
   ensure_stored: (pop=false) ->
@@ -525,7 +547,7 @@ class EffectCompiler
 
   assign: (name) ->
     value = @stack.pop()
-    if not @globals[name] and not @locals[name]
+    if not @globals[name] and not @locals[name] and not builtin_vars[name]
       @locals[name] = @infer_type value
     @effectstack.top().push ['assign', name, value]
   macro_assign: (name) ->
@@ -536,11 +558,29 @@ class EffectCompiler
     else
       @assign name
 
+  swizzle: (swizzle) ->
+    if swizzle.indexOf('.') != -1
+      val = @ensure_stored pop=true
+      swizzles = swizzle.split '.'
+      for swizzle in swizzles
+        @stack.push ['swizzle', swizzle, val]
+    else
+      @stack.push ['swizzle', swizzle, @stack.pop()]
+
   avec: () ->
     list = @stack.pop()
     assert list[0] == 'list'
     size = @list_length list
     @stack.push ['vec', size].concat list[1...]
+
+  word_size: () ->
+    val = @stack.pop()
+    if val[0] == 'list'
+      @stack.push new Float val.length-1
+    else
+      type = @infer_type val
+      assert type[...3] == 'vec'
+      @stack.push new Float parseInt type[3...]
 
   reduce: (block) ->
     list = @stack.pop()
@@ -574,19 +614,37 @@ class EffectCompiler
     @tokens.insert tatoms.concat [']']
 
   range_literal: (token) ->
-    token = token.split(/:/).join ' '
+    token = token.split(/:/)
     if token.length == 1
-      tokens = "0 #{token} 1 range"
+      if token[0][0] == '+'
+        tokens = "0 #{token[0][1...]} 1 inclusive-range"
+      else
+        tokens = "0 #{token[0]} 1 range"
     else if token.length == 2
-      tokens = "#{token} 1 range"
+      if token[1][0] == '+'
+        token[1] = token[1][1...]
+        tokens = "#{token.join ' '} 1 inclusive-range"
+      else
+        tokens = "#{token.join ' '} 1 range"
     else
-      tokens = "#{token} range"
+      if token[1][0] == '+'
+        token[1] = token[1][1...]
+        tokens = "#{token.join ' '} inclusive-range"
+      else
+        tokens = "#{token.join ' '} range"
     @tokens.insert @tokenize tokens
 
   word_range: () ->
     [start, end, step] = @stack.pop 3
     list = ['list']
     for num in [toNative(start)...toNative(end)] by toNative(step)
+      list.push new Float num
+    @stack.push list
+
+  'word_inclusive-range': () ->
+    [start, end, step] = @stack.pop 3
+    list = ['list']
+    for num in [toNative(start)..toNative(end)] by toNative(step)
       list.push new Float num
     @stack.push list
 
@@ -597,6 +655,7 @@ class EffectCompiler
   'word_<': () -> @stack.push ['bop', '<'].concat @stack.pop 2
   'word_>': () -> @stack.push ['bop', '>'].concat @stack.pop 2
   'word_==': () -> @stack.push ['bop', '=='].concat @stack.pop 2
+  word_neg: () -> @stack.push ['neg', @stack.pop()]
 
   push_block: () ->
     nblock = ['block']
@@ -733,7 +792,7 @@ class CodeBuilder
 
   build_one: (effect) ->
     if effect instanceof Object and effect.value != undefined
-      return effect.value.toString()
+      return effect.toString()
     if @['build_' + effect[0]] == undefined
       console.log 'Unknown effect:', effect
       assert false
@@ -753,8 +812,10 @@ class CodeBuilder
   build_call: ([_, name, args]) ->
     "#{name}(#{(@build_one arg for arg in args).join ', '})"
 
-  'build_bop': ([_, op, left, right]) ->
+  build_bop: ([_, op, left, right]) ->
     "(#{@build_one left} #{op} #{@build_one right})"
+  build_neg: ([_, val]) ->
+    "-#{@build_one val}"
 
   build_if: ([_, cond]) ->
     @pushblock "if(#{@build_one cond})"
@@ -771,7 +832,7 @@ class JSCompiler extends CodeBuilder
     @popblock()
 
   build_assign: ([_, name, value]) ->
-    if @vars_defined.include name[0]
+    if @vars_defined.include(name[0]) or name[0][...3] == 'gl_'
       "#{name[0]} = #{@build_one value}"
     else
       @vars_defined.push name[0]
@@ -792,6 +853,9 @@ class JSCompiler extends CodeBuilder
   build_vec: (effect) ->
     "[#{(@build_one elem for elem in effect[2...]).join ', '}]"
 
+  build_swizzle: ([_, swizzle, vec]) ->
+    "swizzle('#{swizzle}', #{@build_one vec})"
+
 class GLSLCompiler extends CodeBuilder
   build_head: () ->
     for name, type of @compiler.globals
@@ -805,7 +869,7 @@ class GLSLCompiler extends CodeBuilder
     @popblock()
 
   build_assign: ([_, name, value]) ->
-    if @vars_defined.include name[0]
+    if @vars_defined.include(name[0]) or name[0][...3] == 'gl_'
       "#{name[0]} = #{@build_one value}"
     else
       @vars_defined.push name[0]
@@ -826,15 +890,47 @@ class GLSLCompiler extends CodeBuilder
   build_vec: (effect) ->
     "vec#{effect[1]}(#{(@build_one elem for elem in effect[2...]).join ', '})"
 
+  build_swizzle: ([_, swizzle, vec]) ->
+    "#{@build_one vec}.#{swizzle}"
+
 code = """
 :globals
   @vec3 uniform =iResolution
   @float uniform =iGlobalTime
 ;
+:m pi 3.14159 ;
+:m tau pi 2 * ;
+:m eps 0.00001 ;
+:m inf 10000000 ;
+:m _e 2.71828 ;
 
-[ 5 6 ] dup min =foo
-5 6 atan2 =bar
-5 6 / atan =baz
+: hsv1->rgb ( hsv:vec3 -> vec3 )
+    hsv .x 6 * [ 0 4 2 ] + 6 mod 3 - abs 1 - 0 1 clamp =>rgb
+    [ 1 1 1 ] rgb hsv .y mix hsv .z *
+;
+
+:m time iGlobalTime to + ;
+
+: frame ( to:float p:vec2 -> vec3 )
+  p length time + sin =d
+  p .y.x atan2 time + d time + sin + pi 3 / mod 3 * sin =a
+  a d + =>v
+  p length 4 * a time + - sin =m
+  a neg =>-a
+  [
+    v neg m d neg sin * time .1 * + sin * a +
+    v m * -a sin -a 3 * sin * 3 * time .5 * + sin *
+    v m mod a m * abs +
+  ] -.1 1 clamp abs
+;
+
+:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2 * 1 - [ resolution .x.y / 1 ] * ;
+iResolution frag->position =p
+
+$[-.05:+.05:.001] !size =>fc /{ p frame } \\+ fc / =ifa
+
+:m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;
+ifa [ 1 .3 iGlobalTime 3 / 0 1 clamp iGlobalTime 55 - 5 / 1 swap - 0 1 clamp * ] * [ 0 .2 0 ] + hsv1->rgb ->fragcolor
 """
 
 basedir = __dirname.split('/')[...-1].join '/'
@@ -842,5 +938,5 @@ fs.readFile basedir + '/wrappers.sfr', (err, data) ->
   code = data+'\n'+code
   console.log '// GLSL'
   new GLSLCompiler().compile code
-  console.log '// Javascript'
-  new JSCompiler().compile code
+  #console.log '// Javascript'
+  #new JSCompiler().compile code
