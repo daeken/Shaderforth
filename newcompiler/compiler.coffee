@@ -70,6 +70,13 @@ class Float
     val = @value.toFixed(5)
     val.replace /0+$/, ''
 
+  fold: (right, func) ->
+    new Float func(@value, right.value)
+  '+': (right) -> @fold right, (a, b) -> a + b
+  '-': (right) -> @fold right, (a, b) -> a - b
+  '**': (right) -> @fold right, (a, b) -> Math.pow a, b
+
+
 class Int
   constructor: (@value) ->
 
@@ -423,7 +430,7 @@ class EffectCompiler
           assert false
       when 'bop'
         switch atom[1]
-          when '+', '-', '*', '/'
+          when '+', '-', '*', '/', '**'
             @infer_type atom[2]
           when '<', '>', '==', '<=', '>='
             new Type 'bool'
@@ -545,6 +552,36 @@ class EffectCompiler
         @stack.push tvar
       tvar
 
+  fold: (element) ->
+    all_constant = (element) ->
+      if element.is_array and element.length > 1
+        switch element[0]
+          when 'val', 'call'
+            false
+        for sub in element
+          if not all_constant(sub)
+            return false
+        true
+      else
+        true
+    if not element.is_array or not all_constant element
+      element
+    else
+      switch element[0]
+        when 'bop'
+          [a, b] = element[2...]
+          if a[element[1]]
+            a[element[1]](b)
+          else
+            element
+        when 'neg'
+          if element[1].neg
+            element[1].neg()
+          else
+            element
+        else
+          element
+
   assign: (name) ->
     value = @stack.pop()
     if not @globals[name] and not @locals[name] and not builtin_vars[name]
@@ -648,14 +685,15 @@ class EffectCompiler
       list.push new Float num
     @stack.push list
 
-  'word_+': () -> @stack.push ['bop', '+'].concat @stack.pop 2
-  'word_-': () -> @stack.push ['bop', '-'].concat @stack.pop 2
-  'word_*': () -> @stack.push ['bop', '*'].concat @stack.pop 2
-  'word_/': () -> @stack.push ['bop', '/'].concat @stack.pop 2
-  'word_<': () -> @stack.push ['bop', '<'].concat @stack.pop 2
-  'word_>': () -> @stack.push ['bop', '>'].concat @stack.pop 2
-  'word_==': () -> @stack.push ['bop', '=='].concat @stack.pop 2
-  word_neg: () -> @stack.push ['neg', @stack.pop()]
+  'word_+': () -> @stack.push @fold ['bop', '+'].concat @stack.pop 2
+  'word_-': () -> @stack.push @fold ['bop', '-'].concat @stack.pop 2
+  'word_*': () -> @stack.push @fold ['bop', '*'].concat @stack.pop 2
+  'word_/': () -> @stack.push @fold ['bop', '/'].concat @stack.pop 2
+  'word_**': () -> @stack.push @fold ['bop', '**'].concat @stack.pop 2
+  'word_<': () -> @stack.push @fold ['bop', '<'].concat @stack.pop 2
+  'word_>': () -> @stack.push @fold ['bop', '>'].concat @stack.pop 2
+  'word_==': () -> @stack.push @fold ['bop', '=='].concat @stack.pop 2
+  word_neg: () -> @stack.push @fold ['neg', @stack.pop()]
 
   push_block: () ->
     nblock = ['block']
@@ -813,7 +851,10 @@ class CodeBuilder
     "#{name}(#{(@build_one arg for arg in args).join ', '})"
 
   build_bop: ([_, op, left, right]) ->
-    "(#{@build_one left} #{op} #{@build_one right})"
+    if op == '**'
+      @build_pow [op, left, right]
+    else
+      "(#{@build_one left} #{op} #{@build_one right})"
   build_neg: ([_, val]) ->
     "-#{@build_one val}"
 
@@ -856,6 +897,9 @@ class JSCompiler extends CodeBuilder
   build_swizzle: ([_, swizzle, vec]) ->
     "swizzle('#{swizzle}', #{@build_one vec})"
 
+  build_pow: ([_, left, right]) ->
+    "Math.pow(#{@build_one left}, #{@build_one right})"
+
 class GLSLCompiler extends CodeBuilder
   build_head: () ->
     for name, type of @compiler.globals
@@ -893,44 +937,11 @@ class GLSLCompiler extends CodeBuilder
   build_swizzle: ([_, swizzle, vec]) ->
     "#{@build_one vec}.#{swizzle}"
 
+  build_pow: ([_, left, right]) ->
+    "pow(#{@build_one left}, #{@build_one right})"
+
 code = """
-:globals
-  @vec3 uniform =iResolution
-  @float uniform =iGlobalTime
-;
-:m pi 3.14159 ;
-:m tau pi 2 * ;
-:m eps 0.00001 ;
-:m inf 10000000 ;
-:m _e 2.71828 ;
-
-: hsv1->rgb ( hsv:vec3 -> vec3 )
-    hsv .x 6 * [ 0 4 2 ] + 6 mod 3 - abs 1 - 0 1 clamp =>rgb
-    [ 1 1 1 ] rgb hsv .y mix hsv .z *
-;
-
-:m time iGlobalTime to + ;
-
-: frame ( to:float p:vec2 -> vec3 )
-  p length time + sin =d
-  p .y.x atan2 time + d time + sin + pi 3 / mod 3 * sin =a
-  a d + =>v
-  p length 4 * a time + - sin =m
-  a neg =>-a
-  [
-    v neg m d neg sin * time .1 * + sin * a +
-    v m * -a sin -a 3 * sin * 3 * time .5 * + sin *
-    v m mod a m * abs +
-  ] -.1 1 clamp abs
-;
-
-:m frag->position ( resolution ) gl_FragCoord .xy resolution .xy / 2 * 1 - [ resolution .x.y / 1 ] * ;
-iResolution frag->position =p
-
-$[-.05:+.05:.001] !size =>fc /{ p frame } \\+ fc / =ifa
-
-:m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;
-ifa [ 1 .3 iGlobalTime 3 / 0 1 clamp iGlobalTime 55 - 5 / 1 swap - 0 1 clamp * ] * [ 0 .2 0 ] + hsv1->rgb ->fragcolor
+$[1:+100] !\\+ 2 ** swap /{ 2 ** } \\+ - =temp
 """
 
 basedir = __dirname.split('/')[...-1].join '/'
