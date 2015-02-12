@@ -398,7 +398,7 @@ class Compiler(object):
 				return 'continue'
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
-				return '%s ? %s : %s' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
+				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
 			elif atom[0] == '[]':
 				return '%s[%s]' % (paren(atom[1], '[]'), structure(atom[2]))
 			else:
@@ -903,6 +903,8 @@ class Compiler(object):
 			elif len(token) > 1 and token[0] == '*' and token != '**':
 				self.rstack.push(self.macrolocals[token[1:]])
 				self.call()
+			elif len(token) > 4 and token[:2] == '##':
+				self.rgb(token[2:])
 			elif len(token) > 2 and token[:2] == '=>':
 				self.macroassign(token[2:])
 			elif len(token) > 2 and token[:2] == '=$':
@@ -1180,7 +1182,9 @@ class Compiler(object):
 	def macrocopy(self, name):
 		val = self.rstack.pop()
 
-		if val[0] == 'var' or val[0] == 'arg':
+		if isinstance(val, float) or isinstance(val, int):
+			inline = True
+		elif val[0] == 'var' or val[0] == 'arg':
 			inline = True
 		elif val[0][0] == '.' and val[1][0] == 'var':
 			inline = True
@@ -1299,6 +1303,14 @@ class Compiler(object):
 	def flatten(self):
 		for elem in self.rstack.pop()[1:]:
 			self.rstack.push(elem)
+
+	def rgb(self, color):
+		if len(color) == 3:
+			r, g, b = list(color)
+			color = '%s%s%s%s%s%s' % (r, r, g, g, b, b)
+		assert len(color) == 6
+		r, g, b = [float(int(color[i:i+2], 16)) / 255 for i in xrange(0, 6, 2)]
+		self.rstack.push(['array', r, g, b])
 
 	def avec(self):
 		tlist = self.rstack.pop()
