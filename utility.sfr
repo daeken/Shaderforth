@@ -37,6 +37,13 @@
     k neg a * exp k neg b * exp + log neg k /
 ;
 
+:m geq ( a x )
+	a x step
+;
+:m eq ( a x )
+	1 a x - sign abs -
+;
+
 ( Maths )
 : closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
 	point a - =>pa
@@ -106,6 +113,16 @@
     hsv .x 6 * [ 0 4 2 ] + 6 mod 3 - abs 1 - 0 1 clamp =>rgb
     [ 1 1 1 ] rgb hsv .y mix hsv .z *
 ;
+
+: rgb->hsv1 ( rgb:vec3 -> vec3 )
+	[ 0 -1 3 / 2 3 / -1 ] =K
+	[ rgb .bg K .wz ] [ rgb .gb K .xy ] rgb .g.b < select =p
+	[ p .xyw rgb .r ] [ rgb .r p .yzx ] rgb .r p .x < select =q
+	q .x.w.y min - =d
+	[ q .z.w.y - 6 d * eps + / + abs d q .x eps + / q .x ]
+;
+
+:m ]rgb ] 255 / ;
 
 :m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;
 

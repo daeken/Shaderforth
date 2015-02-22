@@ -1,3 +1,17 @@
+:wrap length ( T -> float ) ;
+
 :wrap min ( T T -> T ) ;
+:wrap abs ( T -> T ) ;
+:wrap clamp ( T T T -> T ) ;
+:wrap mix ( T T T -> T ) ;
+:wrap mod ( T T -> T ) ;
+
+:wrap sin ( T -> T ) ;
+:wrap cos ( T -> T ) ;
+:wrap tan ( T -> T ) ;
 :wrap atan ( T -> T ) ;
 :wrap atan2 ( T T -> T ) atan ;
+
+:wrap vec2 ( T -> vec2 ) ;
+:wrap vec3 ( T -> vec3 ) ;
+:wrap vec4 ( T -> vec4 ) ;

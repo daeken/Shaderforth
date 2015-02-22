@@ -109,14 +109,14 @@ class Renderer
 
 		p = ctx.createProgram()
 		v = ctx.createShader(ctx.VERTEX_SHADER)
-		ctx.shaderSource(v, 'precision highp float; attribute vec3 p; void main() { gl_Position = vec4(p.xyz-1.0, 1); }')
+		ctx.shaderSource(v, 'precision mediump float; attribute vec3 p; void main() { gl_Position = vec4(p.xyz-1.0, 1); }')
 		ctx.compileShader(v)
 		if !ctx.getShaderParameter(v, ctx.COMPILE_STATUS)
 			console.log('Failed to compile vertex shader.')
 			console.log(ctx.getShaderInfoLog(v))
 		ctx.attachShader(p, v)
 		f = ctx.createShader(ctx.FRAGMENT_SHADER)
-		ctx.shaderSource(f, 'precision highp float; ' + @code)
+		ctx.shaderSource(f, 'precision mediump float; ' + @code)
 		ctx.compileShader(f)
 		if !ctx.getShaderParameter(f, ctx.COMPILE_STATUS)
 			console.log('Failed to compile fragment shader ' + @name + '.')
@@ -174,9 +174,11 @@ class Renderer
 		ctx.enableVertexAttribArray(ctx.getAttribLocation @p, 'p')
 		ctx.useProgram(@p)
 		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), @dimensions[0], @dimensions[1], 0)
+		ctx.uniform2f(ctx.getUniformLocation(@p, 'resolution'), @dimensions[0], @dimensions[1])
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iMouse'), mousepos[0], mousepos[1], mousestate[0], mousestate[1])
 		$('#time').text(time)
 		ctx.uniform1f(ctx.getUniformLocation(@p, 'iGlobalTime'), time)
+		ctx.uniform1f(ctx.getUniformLocation(@p, 'time'), time)
 		date = new Date
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iDate'), date.getFullYear(), date.getMonth(), date.getDay(), date.getHours() * 60 * 60 + date.getMinutes() * 60 + date.getSeconds())
 

@@ -169,6 +169,7 @@ foldops = {
 	'<' : lambda a, b: a < b,
 	'>=' : lambda a, b: a >= b,
 	'<=' : lambda a, b: a <= b,
+	'clamp' : None
 }
 glfuncs = dict(
 	dot=2, 
@@ -179,6 +180,7 @@ glfuncs = dict(
 	cos=1, 
 	exp=1, 
 	sqrt=1, 
+	inversesqrt=1, 
 	mod=2, 
 	tan=1, 
 	min=2, 
@@ -260,6 +262,10 @@ class Compiler(object):
 					if atom not in self.gdeps:
 						self.gdeps[atom] = []
 					self.gdeps[atom].append(name)
+				elif len(atom) > 1 and atom[0] == '$' and atom[1:] in self.globals:
+					if atom[1:] not in self.gdeps:
+						self.gdeps[atom[1:]] = []
+					self.gdeps[atom[1:]].append(name)
 		
 		self.passes, eps = self.parsepasses()
 		eps.append('main')
@@ -357,6 +363,13 @@ class Compiler(object):
 				if atom[2] is None:
 					return '%s' % structure(atom[1])
 				else:
+					if isinstance(atom[2], tuple) and atom[2][0] in ('+', '-', '*', '/'):
+						if (
+							(atom[2][0] in ('+', '*') and atom[1] in atom[2]) or
+							(atom[2][1] == atom[1])
+						):
+							other = structure([elem for elem in atom[2] if elem != atom[1]][1])
+							return '%s %s= %s' % (structure(atom[1]), atom[2][0], structure(other))
 					return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
@@ -510,7 +523,7 @@ class Compiler(object):
 			for ref in refs:
 				if ref in inside and ref not in need:
 					need.append(ref)
-		return [('=', ('var', var), None) for var in need] + effects
+		return [('=', ('var', var), None) for var in need if not var.startswith('gl_')] + effects
 
 	def rename(self, name):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
@@ -721,8 +734,13 @@ class Compiler(object):
 			words[name] = self.expandmacros(name, tokens, macros)
 
 		self.words = {}
+		self.macros = {}
+		self.macroglobals = {}
+		self.structs = {}
 		locals, effects, localorder, argnames = self.compile('__globals', globals, pre=True)
+		self.macroglobals = self.macrolocals
 		self.globals.update(locals)
+		macros['__globals_dep'] = globals
 
 		def subword(name):
 			return lambda self: self.rstack.push(tuple([name] + self.rstack.pop()[1:]))
@@ -795,7 +813,7 @@ class Compiler(object):
 			else:
 				return foldops[op](a, b)
 
-		if False not in map(eligible, operands):
+		if foldops[op] and False not in map(eligible, operands):
 			return reduce(fold, operands)
 
 		if op == '*':
@@ -835,6 +853,12 @@ class Compiler(object):
 				return float(0)
 			elif len(operands) == 1:
 				return operands[0]
+		elif op == 'clamp' and False not in map(eligible, operands):
+			val, a, b = operands
+			if isinstance(val, list):
+				return ['array'] + [min(max(elem, a), b) for elem in val[1:]]
+			else:
+				return min(max(val, a), b)
 
 		return tuple([op] + operands)
 
@@ -856,6 +880,10 @@ class Compiler(object):
 					self.rstack.push(elem[letterElem[swizzle] + 1])
 				else:
 					self.rstack.push(['array'] + [elem[letterElem[char] + 1] for char in swizzle])
+		elif isinstance(elem, tuple) and elem[0][0] == '.' and self.infertype(elem[1]).startswith('vec'):
+			reorder = elem[0][1:]
+			for swizzle in swizzles:
+				self.rstack.push(('.' + ''.join(reorder[letterElem[c]] for c in swizzle), elem[1], False))
 		else:
 			for swizzle in swizzles:
 				self.rstack.push(('.' + swizzle, elem, False))
@@ -868,6 +896,7 @@ class Compiler(object):
 		self.locals = {}
 		self.localorder = []
 		self.macrolocals = {}
+		self.macrolocals.update(self.macroglobals)
 		self.effects = []
 		if not pre:
 			self.argcount = len(self.wordtypes[name][0])+1
@@ -943,9 +972,13 @@ class Compiler(object):
 				self.range(token[2:-1].split(':'))
 			elif len(token) > 1 and token[0] == '!' and token != '!=':
 				self.dup()
-				self.atoms.insert([token[1:]])
+				self.rstack.push(token[1:])
+				self.call()
 			elif len(token) > 1 and token[0] == '~':
-				self.condexec(token[1:])
+				if token == '~{':
+					self.condexec(self.block())
+				else:
+					self.condexec(token[1:])
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -1309,6 +1342,7 @@ class Compiler(object):
 			r, g, b = list(color)
 			color = '%s%s%s%s%s%s' % (r, r, g, g, b, b)
 		assert len(color) == 6
+		getcontext().prec = 5
 		r, g, b = [float(int(color[i:i+2], 16)) / 255 for i in xrange(0, 6, 2)]
 		self.rstack.push(['array', r, g, b])
 

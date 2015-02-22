@@ -1,33 +1,26 @@
-: pnoise-permute ( x:vec4 -> vec4 )
+:m noise-permute ( x )
 	x 34 * 1 + x * 289 mod
 ;
 
-:m taylor-inv-sqrt ( r )
-	1.79284291400159 .85373472095314 r * -
-;
-
 :m pnoise-fade ( t )
-	[
-		t t t
-		t 6 * 15 - t * 10 +
-	] \*
+	t 6 * 15 - t * 10 + t 2 vec2 ** *
 ;
 
 : pnoise-2d ( v:vec2 -> float )
 	v .xyxy floor [ 0 0 1 1 ] + 289 mod =Pi
 	v .xyxy fract [ 0 0 1 1 ] - =Pf
 
-	Pi .xzxz pnoise-permute Pi .yyww + pnoise-permute =i
-	i 1 41 / * fract 2 * 1 - =gx
+	Pi .xzxz noise-permute Pi .yyww + noise-permute =>i
+	i 41 / fract 2 * 1 - =gx
 	gx abs .5 - =gy
-	gx gx .5 + floor - =gx
+	gx !round - =gx
 
-	[ gx .x gy .x ] =g00
-	[ gx .y gy .y ] =g10
-	[ gx .z gy .z ] =g01
-	[ gx .w gy .w ] =g11
+	[ gx .x gy .x ] =>g00
+	[ gx .y gy .y ] =>g10
+	[ gx .z gy .z ] =>g01
+	[ gx .w gy .w ] =>g11
 
-	[ g00 g01 g10 g11 ] /length taylor-inv-sqrt =norm
+	gx gx * gy gy * + sqrt inversesqrt =norm
 	g00 norm .x * Pf .xy dot =>n00
 	g10 norm .z * Pf .zy dot =>n10
 	g01 norm .y * Pf .xw dot =>n01
@@ -36,10 +29,6 @@
 	Pf .xy pnoise-fade =fade_xy
 	[ n00 n01 ] [ n10 n11 ] fade_xy .x mix =n_x
 	n_x .x.y fade_xy .y mix 2.3 *
-;
-
-: snoise-permute ( x:vec3 -> vec3 )
-	x 34 * 1 + x * 289 mod
 ;
 
 : snoise-2d ( v:vec2 -> float )
@@ -57,7 +46,7 @@
 	x0 .xyxy C .xxzz + [ i1 0 0 ] - =x12
 
 	i 289 mod =i
-	[ 0 i1 .y 1 ] i .y + snoise-permute i .x + [ 0 i1 .x 1 ] + snoise-permute =p
+	[ 0 i1 .y 1 ] i .y + noise-permute i .x + [ 0 i1 .x 1 ] + noise-permute =p
 
 			.5
 			[
@@ -66,14 +55,13 @@
 				x12 .zw dup dot
 			]
 		-
-	0 max =m
-	[ m m m m ] \* =m
+	0 max 4 vec3 ** =m
 
-	2 p C .www * fract * 1 - =x
+	p C .www * fract 2 * 1 - =x
 	x abs .5 - =h
-	x .5 + floor =ox
+	x round =>ox
 	x ox - =a0
-	a0 a0 * h h * + taylor-inv-sqrt m * =m
+	a0 a0 * h h * + inversesqrt m * =m
 
 		m
 		[
