@@ -523,7 +523,7 @@ class Compiler(object):
 			for ref in refs:
 				if ref in inside and ref not in need:
 					need.append(ref)
-		return [('=', ('var', var), None) for var in need if not var.startswith('gl_')] + effects
+		return [('=', ('var', var), None) for var in need if not var.startswith('gl_') and var not in decls[0]] + effects
 
 	def rename(self, name):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
@@ -1485,6 +1485,22 @@ class Compiler(object):
 		cond = self.rstack.pop()
 		if all_true(cond):
 			self.atoms.insert(block.atoms)
+
+	@word('cif')
+	def cif(self):
+		def all_true(cond):
+			if isinstance(cond, list):
+				assert [elem in (True, False) for elem in cond[1:]]
+				return False not in map(all_true, cond[1:])
+			assert cond in (True, False)
+			return cond
+		cond = self.rstack.pop()
+		else_ = self.blockify(self.rstack.pop())
+		if_ = self.blockify(self.rstack.pop())
+		if all_true(cond):
+			self.atoms.insert(if_.atoms)
+		else:
+			self.atoms.insert(else_.atoms)
 
 	@word('when')
 	def when(self):
