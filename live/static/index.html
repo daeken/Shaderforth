@@ -12,8 +12,12 @@
 				<td><pre id="errors"></pre></td>
 			</tr>
 		</table>-->
-		<canvas id="cvs" style-nil="cursor: none"></canvas>
-		<a id="screenshot">Screenshot</a><a id="downloader" style="display: none"></a> @<span id="time"></span> <a id="restart">Restart</a> <a id="pause">Pause</a> <a id="reverse">Reverse</a>
+		<table border=0>
+			<tr>
+				<td><canvas id="cvs" style-nil="cursor: none"></canvas></td>
+				<td valign=bottom>Mouse at [ <span id="mousepos"></span> ]<br>Clicked [ <span id="mouseclick"></span> ]<br><a id="screenshot">Screenshot</a><a id="downloader" style="display: none"></a> @<span id="time"></span> <a id="restart">Restart</a> <a id="pause">Pause</a> <a id="reverse">Reverse</a></td>
+			</tr>
+		</table>
 		<div id="options"></div>
 		<pre id="errors" style="color: red"></pre>
 		<pre id="messages"></pre>

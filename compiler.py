@@ -1,10 +1,10 @@
 from decimal import *
-import re, sys
+import pprint, re, sys
 
 def format_float(tval):
 	if tval == Decimal('-0'):
 		return '0.'
-	val = str(Decimal(tval))
+	val = ('%f' % Decimal(tval)).rstrip('0')
 	if '.' not in val:
 		return val + '.'
 	elif val.startswith('0.'):
@@ -169,7 +169,10 @@ foldops = {
 	'<' : lambda a, b: a < b,
 	'>=' : lambda a, b: a >= b,
 	'<=' : lambda a, b: a <= b,
-	'clamp' : None
+	'clamp' : None, 
+	'min' : lambda a, b: min(a, b), 
+	'max' : lambda a, b: max(a, b), 
+	'mod' : lambda a, b: a % b, 
 }
 glfuncs = dict(
 	dot=2, 
@@ -177,6 +180,7 @@ glfuncs = dict(
 	abs=1, 
 	atan=1, 
 	atan2=2, 
+	bool=1,
 	cos=1, 
 	exp=1, 
 	sqrt=1, 
@@ -242,10 +246,20 @@ class Compiler(object):
 		self.options = []
 		self.renamed = {}
 		self.rename_i = 0
+		self.is_static_frame = False
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 		self.deps = {}
 		self.gdeps = {}
 		self.mainWords = {}
+
+		if self.shadertoy:
+			self.words['mainImage'] = self.words['main']
+			del self.words['main']
+			self.wordtypes['mainImage'] = (('out vec4', 'in vec2'), 'void', ['fragColor', 'fragCoord'])
+			del self.wordtypes['main']
+			self.macroglobals['gl_FragColor'] = ('var', 'fragColor')
+			self.macroglobals['gl_FragCoord'] = ('var', 'fragCoord')
+			self.mainWords['mainImage'] = 'mainImage'
 
 		for name, atoms in (self.words.items() + self.macros.items()):
 			if name in self.words:
@@ -254,7 +268,7 @@ class Compiler(object):
 			for atom in atoms:
 				if not isinstance(atom, unicode):
 					continue
-				if atom[0] in '&\\/=':
+				if atom[0] in '&\\/=!*?~':
 					atom = atom[1:]
 				if (atom in self.words or atom in self.macros) and atom not in deps:
 					deps.append(atom)
@@ -268,7 +282,7 @@ class Compiler(object):
 					self.gdeps[atom[1:]].append(name)
 		
 		self.passes, eps = self.parsepasses()
-		eps.append('main')
+		eps.append('mainImage' if shadertoy else 'main')
 		for i, ep in enumerate(eps):
 			if len(self.words[ep][1]) == 0:
 				del eps[i]
@@ -414,6 +428,8 @@ class Compiler(object):
 				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
 			elif atom[0] == '[]':
 				return '%s[%s]' % (paren(atom[1], '[]'), structure(atom[2]))
+			elif atom[0] == 'carray':
+				return '{%s}' % (', '.join(structure(elem) for elem in atom[1:]))
 			else:
 				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
@@ -535,7 +551,12 @@ class Compiler(object):
 		elif name in self.renamed:
 			return self.renamed[name]
 		elif not self.minimize:
-			self.renamed[name] = name = name.replace('-', '_').replace('>', '_').replace('<', '_').replace('?', '_').replace('__', '_')
+			tname = name
+			for x in '-><?[]*+/!@#$%^(){}\'':
+				if x in name:
+					tname = tname.replace(x, '_' + str(self.rename_i))
+					self.rename_i += 1
+			self.renamed[name] = name = tname.replace('__', '_')
 			return name
 		else:
 			first = '_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -786,14 +807,20 @@ class Compiler(object):
 				passes.append((effect[1][1], effect[2][1]))
 			else:
 				if effect[1][1] == 'sound-pass':
-					self.mainWords[effect[2][0]] = 'mainSound'
-				eps.append(effect[2][0])
-				passes.append((effect[1][1], effect[2][0]))
+					self.mainWords[effect[2]] = 'mainSound'
+				eps.append(effect[2])
+				passes.append((effect[1][1], effect[2]))
 		return passes, eps
 
 	def fold_constants(self, op, operands):
 		def eligible(val):
-			return isinstance(val, float) or isinstance(val, int) or isinstance(val, list)
+			return (
+				isinstance(val, float) or 
+				isinstance(val, int) or 
+				isinstance(val, bool) or 
+				isinstance(val, Block) or 
+				(isinstance(val, list) and False not in map(eligible, val[1:]))
+			)
 
 		def fold(a, b):
 			getcontext().prec = 5
@@ -979,6 +1006,8 @@ class Compiler(object):
 					self.condexec(self.block())
 				else:
 					self.condexec(token[1:])
+			elif token in self.macrolocals:
+				self.rstack.push(self.macrolocals[token])
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
@@ -987,8 +1016,6 @@ class Compiler(object):
 					self.effects.append(elem)
 				else:
 					self.rstack.push(elem)
-			elif token in self.macrolocals:
-				self.rstack.push(self.macrolocals[token])
 			elif token == '[':
 				self.sstack.push(self.rstack)
 				self.rstack = Stack()
@@ -1111,7 +1138,7 @@ class Compiler(object):
 			for i, elem in enumerate(atoms):
 				if elem in all_names:
 					atoms[i] = 'macro_' + name + '_' + elem
-				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/' and elem[1:] in all_names:
+				elif isinstance(elem, unicode) and len(elem) > 1 and elem[0] in '*\\/?~!' and elem[1:] in all_names:
 					atoms[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
@@ -1138,6 +1165,10 @@ class Compiler(object):
 		return ('arg', self.argnames[self.argcount-1])
 
 	def assign(self, name):
+		if name in self.macroglobals:
+			if isinstance(self.macroglobals[name], tuple) and self.macroglobals[name][0] == 'var':
+				name = self.macroglobals[name][1]
+
 		if isinstance(self.rstack.top(), Type):
 			type = self.rstack.pop()
 			self.locals[name] = type
@@ -1234,6 +1265,8 @@ class Compiler(object):
 		if isinstance(expr, tuple) or isinstance(expr, list):
 			if expr[0] == 'var':
 				name = expr[1]
+				if name in self.macrolocals and isinstance(self.macrolocals[name], list) and self.macrolocals[name][0] == 'var':
+					name = self.macrolocals[name][1]
 				if name in self.globals:
 					return self.globals[name].name
 				elif name in self.locals:
@@ -1264,6 +1297,10 @@ class Compiler(object):
 						assert False
 
 				return 'vec%i' % length
+			elif expr[0] == 'carray':
+				return 'const ' + self.infertype(expr[1]) + '[' + str(len(expr)-1) + ']'
+			elif expr[0] == '[]':
+				return self.infertype(expr[1]).split('const ', 1)[-1].split('[', 1)[0]
 			elif expr[0] in gltypes:
 				return gltypes[expr[0]]
 			elif expr[0] in self.wordtypes:
@@ -1333,9 +1370,25 @@ class Compiler(object):
 		self.eatcomment()
 
 	@word('flatten')
-	def flatten(self):
+	def flatten(self, deep=False):
+		arr = self.rstack.top()
+		if not isinstance(arr, list) or len(arr) == 0 or arr[0] != 'array':
+			if self.infertype(arr) in self.structs:
+				arr = self.ensure_stored(pop=True)
+				struct = self.structs[self.infertype(arr)]
+				self.rstack.push(['array'] + [('.' + elem[0], arr, True) for elem in struct])
+			elif not self.infertype(arr).startswith('vec'):
+				return
+			else:
+				self.veca()
 		for elem in self.rstack.pop()[1:]:
 			self.rstack.push(elem)
+			if deep:
+				self.flatten(deep=True)
+
+	@word('flatten-deep')
+	def flatten_deep(self):
+		self.flatten(deep=True)
 
 	def rgb(self, color):
 		if len(color) == 3:
@@ -1569,6 +1622,26 @@ class Compiler(object):
 	def return_nil(self):
 		self.effects.append(('return', ))
 
+	@word('printdbg')
+	def printdbg(self):
+		pprint.pprint(self.rstack.top())
+
+	@word('switch')
+	def switch(self):
+		val = self.ensure_stored(pop=True)
+		arr = self.rstack.pop()
+		assert arr[0] == 'array'
+		elems = ['array']
+		for i in xrange(1, len(arr), 2):
+			if i == len(arr) - 1:
+				elems.append(arr[i])
+			else:
+				elems.append((u'==', val, arr[i]))
+				elems.append(arr[i+1])
+		
+		self.rstack.push(elems)
+		self.cond()
+
 	@word('cond')
 	def cond(self):
 		arr = self.rstack.pop()
@@ -1621,12 +1694,18 @@ class Compiler(object):
 	@word('and')
 	def and_(self):
 		b, a = self.rstack.pop(), self.rstack.pop()
-		self.rstack.push(('&&', a, b))
+		if isinstance(a, bool) and isinstance(b, bool):
+			self.rstack.push(a and b)
+		else:
+			self.rstack.push(('&&', a, b))
 
 	@word('or')
 	def or_(self):
 		b, a = self.rstack.pop(), self.rstack.pop()
-		self.rstack.push(('||', a, b))
+		if isinstance(a, bool) and isinstance(b, bool):
+			self.rstack.push(a or b)
+		else:
+			self.rstack.push(('||', a, b))
 
 	@word('not')
 	def not_(self):
@@ -1667,14 +1746,21 @@ class Compiler(object):
 	@word('array')
 	def array(self):
 		count = self.rstack.pop()
-		type = self.rstack.top()
-		type.array(count)
+		if isinstance(count, list):
+			self.rstack.push(tuple(['carray'] + count[1:]))
+		else:
+			type = self.rstack.top()
+			type.array(count)
 
 	@word('[]')
 	def index(self):
+		self.int()
 		index = self.rstack.pop()
 		arr = self.rstack.pop()
-		self.rstack.push(('[]', arr, index))
+		if isinstance(arr, list) and arr and arr[0] == 'array' and isinstance(index, int):
+			self.rstack.push(arr[index+1])
+		else:
+			self.rstack.push(('[]', arr, index))
 
 	@word('size')
 	def size(self):
@@ -1724,6 +1810,15 @@ class Compiler(object):
 		var = self.rstack.pop()
 		self.options.append((var, 'toggle', None))
 
+	@word('slider')
+	def slider(self):
+		steps = int(self.rstack.pop())
+		val = old_float(self.rstack.pop())
+		max = old_float(self.rstack.pop())
+		min = old_float(self.rstack.pop())
+		var = self.rstack.pop()
+		self.options.append((var, 'slider', (min, max, val, steps)))
+
 	@word('recur')
 	def recur(self):
 		depth = self.rstack.pop()
@@ -1766,6 +1861,10 @@ class Compiler(object):
 	def upto(self):
 		top = self.rstack.pop()
 		self.rstack.push(['array'] + list(map(float, range(int(top)))))
+
+	@word('static-frame')
+	def static_frame(self):
+		self.is_static_frame = True
 
 def main(fn, shadertoy=None, minimize=None):
 	utility = file('utility.sfr', 'r').read().decode('utf-8')

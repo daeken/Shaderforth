@@ -37,13 +37,15 @@ def compile():
 		dimensions = compiler.dimensions
 		options = compiler.options
 		last_imports = compiler.imports
+		is_static = compiler.is_static_frame
 	else:
 		shaders = dict(main='void main() { gl_FragColor = vec4(1., 0., 0., 1.); }')
 		globals = {}
 		passes = []
 		dimensions = {}
 		options = []
-	return success, shaders, globals, passes, dimensions, options, messages, errors
+		is_static = True
+	return success, shaders, globals, passes, dimensions, is_static, options, messages, errors
 
 @app.route('/')
 def index():

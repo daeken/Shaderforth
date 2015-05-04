@@ -125,6 +125,7 @@
 :m ]rgb ] 255 / ;
 
 :m ->fragcolor ( v ) [ v 1 ] =gl_FragColor ;
+:m fragcolor gl_FragColor .xyz ;
 
 ( Array Operations )
 :m multi2 ( arr )

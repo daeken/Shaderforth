@@ -28,12 +28,13 @@ compiler = Compiler(tiler + file(sys.argv[1], 'r').read().decode('utf-8'), utili
 assert len(compiler.outcode) == 1
 frag = compiler.outcode['main']
 
-swidth = 900
-sheight = 600
+swidth = 960
+sheight = 540
 scale = 16
 twidth = swidth * scale
 theight = sheight * scale
-frametime = 15
+final_scale = 2
+frametime = 22.248
 frames = []
 for x in xrange(0, twidth, swidth):
 	for y in xrange(0, theight, sheight):
@@ -56,6 +57,7 @@ def init():
 	glEnableVertexAttribArray(glGetAttribLocation(program, 'p'))
 
 def render():
+	global im
 	glClear(GL_COLOR_BUFFER_BIT)
 	glUseProgram(program)
 	glViewport(0, 0, swidth, sheight)
@@ -76,7 +78,11 @@ def render():
 	if len(frames):
 		glutPostRedisplay()
 	else:
-		im.save(sys.argv[2])
+		if sys.argv[2] != '-':
+			im.save(sys.argv[2])
+		if scale != final_scale and sys.argv[3] != '-':
+			im = im.resize((swidth * final_scale, sheight * final_scale), Image.LANCZOS)
+			im.save(sys.argv[3])
 		sys.exit(0)
 
 glutInit([])
