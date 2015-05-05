@@ -1,0 +1,119 @@
+import[ noise ]
+import[ distance-2d ]
+
+:globals
+	true =>shadertoy
+		{
+			@vec3 uniform =iResolution @float uniform =iGlobalTime
+			iResolution .xy =>resolution
+			iGlobalTime =>time
+		}
+		{ @vec2 uniform =resolution @float uniform =time }
+	shadertoy cif
+
+	static-frame
+	@vec3 =accum
+;
+
+:struct material
+	@vec3 =color
+	@float =thickness
+	@float =absorption
+;
+
+:m curve-steps 20 ;
+: curve-dist ( p:vec2 a:vec2 b:vec2 c:vec2 -> float )
+	10 =dist
+	a =last
+	{
+		_ #1 + float curve-steps / =t
+			a b t mix
+			b c t mix
+		t mix =cur
+		cur last p point-distance-line dist min =dist
+		cur =last
+	} curve-steps times
+	dist
+;
+
+:m curve-line ( points p )
+	points size 1 - 2 / upto /{
+		points _ 2 *     [] =>a
+		points _ 2 * 1 + [] =>b
+		points _ 2 * 2 + [] =>c
+		p a b c curve-dist
+		c =>a
+	} \min
+;
+
+:m hash ( elems tfreq )
+	tfreq 1000 / =>freq
+	elems /flatten-deep enumerate /{ =>[ _hi _hx ] _hi 1 + 7177 freq * * _hx 6599 freq * * _hi 1 + 5749 freq * * * + sin } \*
+;
+
+:m grain ( x )
+	x 50 * pnoise-2d .05 * .95 +
+;
+
+: square-impl ( p:vec2 pos:vec2 dim:vec2 prerot:float postrot:float mat:material )
+	p prerot rotate-2d pos - postrot rotate-2d =p
+	p dim box =>dist
+	[ p mat ] .9 hash =>grain-seed
+	grain-seed p + grain =tex
+	grain-seed p + 40 * pnoise-2d abs -200 * 290 + =>edge
+	dist 0 1 clamp 10 edge + * 0 1 clamp =v
+		mat .color tex *
+		##fff
+		v
+	mix =>color
+	accum mat .thickness .1 * 0 v mix - =accum
+	accum accum color * mat .absorption mix =accum
+;
+
+:m square ( p pos dim prerot postrot mat )
+	p pos dim prerot deg->rad postrot deg->rad mat square-impl
+;
+
+: curve-impl ( dist:float p:vec2 width:float mat:material )
+	[ p mat ] .9 hash =>grain-seed
+	grain-seed p + grain =tex
+	grain-seed p + 40 * pnoise-2d abs -200 * 290 + =>edge
+	dist width - 0 1 clamp 10 edge + * 0 1 clamp =v
+		mat .color tex *
+		##fff
+		v
+	mix =>color
+	accum mat .thickness .1 * 0 v mix - =accum
+	accum accum color * mat .absorption mix =accum
+;
+
+:m curve ( points p width mat )
+	points p curve-line p width mat curve-impl
+;
+
+:m symm [ _ .x abs _ .y ] ;
+
+resolution frag->position =p
+
+##fff ##ddd p length .2 + 2.25 ** p 1000 * pnoise-2d .4 * + mix 1.2 / =>background
+
+background =accum
+
+p symm =ps
+
+: knot ( t:float -> vec3 )
+	[
+		t sin 2 t * sin 2 * +
+		t cos 2 t * cos 2 * -
+		3 t * sin
+	] 4 /
+;
+
+150 =>count
+{
+	_ float count 1 - / =v
+	v tau eps - * time 10 / + knot =k
+	p k .xy [ 1.2 -1.2 ] * [ 0 .13 ] - 1.1 * [ .15 .15 ] 0 v -360 * k .z 360 * + [ [ v k .z + 1 + 1 mod .1 1 ] hsv1->rgb .3 6 k .z * ] material square
+} count 1 - times
+
+accum ->fragcolor
