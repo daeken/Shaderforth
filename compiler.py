@@ -51,6 +51,8 @@ def parse(code):
 
 	return code
 
+_language = 'glsl'
+
 class Type(object):
 	def __init__(self, name):
 		self.name = name
@@ -67,7 +69,10 @@ class Type(object):
 		return ' '.join(self.attributes) + (' ' if self.attributes else '') + self.name + ('' if self.array_count is None else '[%i]' % self.array_count)
 
 	def rename(self):
-		return ' '.join(self.attributes) + (' ' if self.attributes else '') + Compiler.instance.rename(self.name) + ('' if self.array_count is None else '[%i]' % self.array_count)
+		body = Compiler.instance.rename(self.name) + ('' if self.array_count is None else '[%i]' % self.array_count)
+		if _language == 'c++':
+			return body
+		return ' '.join(self.attributes) + (' ' if self.attributes else '') + body
 
 class Stack(object):
 	def __init__(self):
@@ -229,13 +234,19 @@ btypes = 'void int float bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bv
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
 class Compiler(object):
-	def __init__(self, code, utility, shadertoy=False, minimize=False):
+	def __init__(self, code, utility, language=False, shadertoy=False, minimize=False):
+		global _language
 		self.barecode = code
 		self.code = utility + code
 		self.imports = []
 		self.loaded_modules = []
 		self.blockstack = []
 		self.tempi = 0
+		self.language = language
+		self.gmp = False
+		if self.language == 'c++-gmp':
+			self.language, self.gmp = 'c++', True
+		_language = self.language
 		self.shadertoy = shadertoy
 		self.minimize = minimize
 		Compiler.instance = self
@@ -367,7 +378,11 @@ class Compiler(object):
 				return unicode(atom)
 
 			if atom[0] == '**':
-				return 'pow(%s, %s)' % (structure(atom[1]), structure(atom[2]))
+				if self.language == 'c++':
+					prefix = 'sf_'
+				else:
+					prefix = ''
+				return '%spow(%s, %s)' % (prefix, structure(atom[1]), structure(atom[2]))
 			if atom[0] in operators:
 				if atom[0] == 'neg':
 					return '-%s' % paren(atom[1], 'neg')
@@ -389,6 +404,11 @@ class Compiler(object):
 				swizzle = atom[0]
 				if atom[2]:
 					swizzle = '.' + self.rename(atom[0][1:])
+				elif self.language == 'c++':
+					swizzle = swizzle.replace('r', 'x').replace('g', 'y').replace('b', 'z').replace('a', 'w')
+				if not atom[2] and self.language == 'c++' and len(swizzle) > 2:
+					val = paren(atom[1], '.')
+					return 'vec%i(%s)' % (len(swizzle)-1, ', '.join('%s.%s' % (val, x) for x in swizzle[1:]))
 				return '%s%s' % (paren(atom[1], '.'), swizzle)
 			elif atom[0] == 'var':
 				if atom[1].startswith('gl_') or atom[1] in self.globals or atom[1] in defd:
@@ -431,13 +451,22 @@ class Compiler(object):
 			elif atom[0] == 'carray':
 				return '{%s}' % (', '.join(structure(elem) for elem in atom[1:]))
 			else:
-				return '%s(%s)' % (self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
+				if self.language == 'c++' and atom[0] in glfuncs:
+					prefix = 'sf_'
+				else:
+					prefix = ''
+				return '%s%s(%s)' % (prefix, self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
 
 		if self.shadertoy:
 			self.emitnl('/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth')
 			self.emitnl(self.barecode.rstrip('\n'))
 			self.emitnl('*/')
 			self.emitnl()
+
+		if self.language == 'c++':
+			if self.gmp:
+				self.emitnl('#define GMP')
+			self.emitnl('#include "Shaderforth.hpp"')
 
 		required = [main]
 		checked = []
@@ -453,11 +482,18 @@ class Compiler(object):
 
 		for name, elems in self.structs.items():
 			self.emitnl('struct %s {' % self.rename(name))
-			for name, type in elems:
-				self.emitnl('\t%s %s;' % (type.rename(), self.rename(name)))
+			for ename, type in elems:
+				self.emitnl('\t%s %s;' % (type.rename(), self.rename(ename)))
+			if self.language == 'c++':
+				self.emitnl('\t%s() {}' % self.rename(name))
+				self.emitnl('\t%s(%s) : %s {}' % (
+					self.rename(name), 
+					', '.join('%s %s' % (type.rename(), self.rename(ename)) for ename, type in elems), 
+					', '.join('%s(%s)' % (self.rename(ename), self.rename(ename)) for ename, type in elems)
+				))
 			self.emitnl('};')
 		for name, type in self.globals.items():
-			if name.startswith('gl_') or (self.shadertoy and 'uniform' in type.attributes):
+			if name.startswith('gl_') or ((self.shadertoy or self.language == 'c++') and 'uniform' in type.attributes):
 				continue
 			elif name not in self.gdeps or True not in [x not in dead for x in self.gdeps[name]]:
 				continue
@@ -972,7 +1008,10 @@ class Compiler(object):
 				value = self.rstack.pop()
 				self.effects.append(('=', var, value))
 			elif len(token) > 1 and token[0] == '.':
-				elem = self.rstack.pop()
+				if self.language == 'c++':
+					elem = self.ensure_stored(pop=True)
+				else:
+					elem = self.rstack.pop()
 				is_struct = self.infertype(elem) in self.structs
 				swizzles = token[1:].split('.')
 				if is_struct:
@@ -1866,13 +1905,31 @@ class Compiler(object):
 	def static_frame(self):
 		self.is_static_frame = True
 
-def main(fn, shadertoy=None, minimize=None):
+def main():
+	import argparse
+
+	parser = argparse.ArgumentParser(description='Shaderforth compiler')
+	parser.add_argument('filename', metavar='filename.sfr', type=unicode,
+						help='a Shaderforth file')
+	parser.add_argument('--shadertoy', action='store_true', 
+						help='enable Shadertoy mode')
+	parser.add_argument('--minimize', action='store_true', 
+						help='minimize GLSL output')
+	parser.add_argument('--language', choices=['glsl', 'c++', 'c++-gmp'], default='glsl', 
+						help='language output')
+
+	args = parser.parse_args()
 	utility = file('utility.sfr', 'r').read().decode('utf-8')
-	compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, shadertoy == '--shadertoy', minimize == '--minimize')
+	compiler = Compiler(
+		file(args.filename, 'r').read().decode('utf-8'), 
+		utility, 
+		language=args.language, 
+		shadertoy=args.shadertoy, 
+		minimize=args.minimize)
 	for name, code in compiler.outcode.items():
 		print >>sys.stderr, '// Shader', name
 		print code
 		print >>sys.stderr
 
 if __name__=='__main__':
-	main(*sys.argv[1:])
+	main()
