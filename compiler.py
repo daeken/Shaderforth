@@ -2,6 +2,8 @@ from decimal import *
 import pprint, re, sys
 
 def format_float(tval):
+	if _language == 'c++':
+		return str(tval)
 	if tval == Decimal('-0'):
 		return '0.'
 	val = ('%f' % Decimal(tval)).rstrip('0')
@@ -247,6 +249,7 @@ class Compiler(object):
 		if self.language == 'c++-gmp':
 			self.language, self.gmp = 'c++', True
 		_language = self.language
+		self.resetprecision()
 		self.shadertoy = shadertoy
 		self.minimize = minimize
 		Compiler.instance = self
@@ -485,8 +488,8 @@ class Compiler(object):
 			for ename, type in elems:
 				self.emitnl('\t%s %s;' % (type.rename(), self.rename(ename)))
 			if self.language == 'c++':
-				self.emitnl('\t%s() {}' % self.rename(name))
-				self.emitnl('\t%s(%s) : %s {}' % (
+				self.emitnl('\tSF_FUNC %s() {}' % self.rename(name))
+				self.emitnl('\tSF_FUNC %s(%s) : %s {}' % (
 					self.rename(name), 
 					', '.join('%s %s' % (type.rename(), self.rename(ename)) for ename, type in elems), 
 					', '.join('%s(%s)' % (self.rename(ename), self.rename(ename)) for ename, type in elems)
@@ -528,7 +531,10 @@ class Compiler(object):
 			else:
 				pname = name
 
-			self.emitnl('%s %s(%s) {' % (self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
+			prefix = ''
+			if self.language == 'c++':
+				prefix = 'SF_FUNC '
+			self.emitnl('%s%s %s(%s) {' % (prefix, self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -859,7 +865,7 @@ class Compiler(object):
 			)
 
 		def fold(a, b):
-			getcontext().prec = 5
+			self.resetprecision()
 			if isinstance(a, list):
 				if isinstance(b, list):
 					assert len(a) == len(b)
@@ -1110,6 +1116,12 @@ class Compiler(object):
 			return list(map(self.vectorize, obj))
 		else:
 			return obj
+
+	def resetprecision(self):
+		if self.language == 'c++':
+			getcontext().prec = 25
+		else:
+			getcontext().prec = 5
 
 	def has_underscore(self, atoms):
 		prefix = '&\\/?*'
@@ -1434,7 +1446,7 @@ class Compiler(object):
 			r, g, b = list(color)
 			color = '%s%s%s%s%s%s' % (r, r, g, g, b, b)
 		assert len(color) == 6
-		getcontext().prec = 5
+		self.resetprecision()
 		r, g, b = [float(int(color[i:i+2], 16)) / 255 for i in xrange(0, 6, 2)]
 		self.rstack.push(['array', r, g, b])
 
