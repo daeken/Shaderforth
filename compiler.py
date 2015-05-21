@@ -235,6 +235,12 @@ gltypes = dict(
 btypes = 'void int float bool vec2 vec3 vec4 mat2 mat3 mat4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4'.split(' ')
 for name, consumes in glfuncs.items():
 	bwords[name] = (consumes, None)
+
+if '/' in __file__:
+	compiler_root = __file__.rsplit('/', 1)[0]
+else:
+	compiler_root = './'
+
 class Compiler(object):
 	def __init__(self, code, utility, language=False, shadertoy=False, minimize=False):
 		global _language
@@ -446,6 +452,8 @@ class Compiler(object):
 				return 'break'
 			elif atom[0] == 'continue':
 				return 'continue'
+			elif atom[0] == 'print':
+				return 'cout << %s << endl' % paren(atom[1])
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
 				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
@@ -629,7 +637,7 @@ class Compiler(object):
 					self.loaded_modules.append(fp)
 					
 					try:
-						tfp = 'modules/' + fp + '.sfr'
+						tfp = compiler_root + '/modules/' + fp + '.sfr'
 						subcode = file(str(tfp)).read()
 						self.imports.append(tfp)
 					except:
@@ -1676,6 +1684,12 @@ class Compiler(object):
 	@word('printdbg')
 	def printdbg(self):
 		pprint.pprint(self.rstack.top())
+
+	@word('print')
+	def print_(self):
+		if self.language == 'c++':
+			self.dup()
+			self.effects.append(('print', self.rstack.pop()))
 
 	@word('switch')
 	def switch(self):
