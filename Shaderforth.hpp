@@ -509,6 +509,10 @@ SF_FUNC vec4 sf_smoothstep(vec4 edge0, vec4 edge1, vec4 x) {
 	);
 }
 
+SF_FUNC int sf_int(float v) {
+	return (int) v;
+}
+
 vec4 gl_FragCoord;
 vec4 gl_FragColor;
 
@@ -528,7 +532,7 @@ int main(int argc, char **argv) {
 	iGlobalTime = atof(argv[3]);
 	iResolution = vec2(width, height);
 
-	unsigned char *pixels = new unsigned char[width * height * 4];
+	unsigned char *pixels = new unsigned char[width * height * 3];
 	png_byte **rows = new png_byte*[height];
 
 	for(int i = 0, y = height - 1; y >= 0; --y) {
@@ -540,7 +544,7 @@ int main(int argc, char **argv) {
 			pixels[i++] = sf_clamp(gl_FragColor.x, 0, 1) * 255;
 			pixels[i++] = sf_clamp(gl_FragColor.y, 0, 1) * 255;
 			pixels[i++] = sf_clamp(gl_FragColor.z, 0, 1) * 255;
-			pixels[i++] = sf_clamp(gl_FragColor.w, 0, 1) * 255;
+			//pixels[i++] = sf_clamp(gl_FragColor.w, 0, 1) * 255;
 		}
 	}
 	
@@ -550,7 +554,7 @@ int main(int argc, char **argv) {
 	png_init_io(png_ptr, fp);
 
 	png_set_IHDR(png_ptr, info_ptr, width, height,
-		8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE,
+		8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
 		PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
 	png_write_info(png_ptr, info_ptr);
 

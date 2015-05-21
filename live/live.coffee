@@ -1,5 +1,4 @@
 last = 0
-clast = 0
 ctx = null
 attachments = {}
 mousepos = [0, 0]
@@ -67,6 +66,7 @@ $(document).ready () ->
 		start = new Date
 		paused_at = 0
 		reversed_at = 0
+		last_time = 0
 		reversed = false
 		render_once = true
 
@@ -94,6 +94,7 @@ $(document).ready () ->
 
 class Renderer
 	constructor: (@name, @target, @code, @dimensions) ->
+		@failed = false
 		@texture = null
 		@textures = []
 		if @name == 'main'
@@ -113,6 +114,7 @@ class Renderer
 			ctx.bindRenderbuffer(ctx.RENDERBUFFER, null)
 			ctx.bindFramebuffer(ctx.FRAMEBUFFER, null)
 
+		$('#messages').text($('#messages').text() + '\n' + @code)
 		p = ctx.createProgram()
 		v = ctx.createShader(ctx.VERTEX_SHADER)
 		ctx.shaderSource(v, 'precision mediump float; attribute vec3 p; void main() { gl_Position = vec4(p.xyz-1.0, 1); }')
@@ -120,6 +122,8 @@ class Renderer
 		if !ctx.getShaderParameter(v, ctx.COMPILE_STATUS)
 			console.log('Failed to compile vertex shader.')
 			console.log(ctx.getShaderInfoLog(v))
+			@failed = true
+			return
 		ctx.attachShader(p, v)
 		f = ctx.createShader(ctx.FRAGMENT_SHADER)
 		ctx.shaderSource(f, 'precision mediump float; ' + @code)
@@ -127,7 +131,8 @@ class Renderer
 		if !ctx.getShaderParameter(f, ctx.COMPILE_STATUS)
 			console.log('Failed to compile fragment shader ' + @name + '.')
 			$('#errors').text($('#errors').text() + '\n' + ctx.getShaderInfoLog(f))
-		$('#messages').text($('#messages').text() + '\n' + @code)
+			@failed = true
+			return
 		ctx.attachShader(p, f)
 		ctx.linkProgram(p)
 		@p = p
@@ -221,8 +226,12 @@ init = (shaders, globals, passes, dimensions, is_static_frame) ->
 	for [dest, src] in passes
 		if shaders[src] != undefined
 			renderers[dest] = new Renderer(src, dest, shaders[src], dimensions[dest])
+			if renderers[dest].failed
+				return
 		attachments[dest] = null
 	main = new Renderer('main', null, shaders['main'], viewdimensions)
+	if main.failed
+		return
 
 	start = new Date
 	render_once = true
