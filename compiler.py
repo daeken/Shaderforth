@@ -2,7 +2,7 @@ from decimal import *
 import pprint, re, sys
 
 def format_float(tval):
-	if _language == 'c++':
+	if _language == 'c++' or _language == 'js':
 		return str(tval)
 	if tval == Decimal('-0'):
 		return '0.'
@@ -19,6 +19,11 @@ def format_float(tval):
 getcontext().prec = 5
 old_float = float
 float = Decimal
+
+old_list = list
+class list(old_list):
+	def __hash__(self):
+		return hash(tuple(self))
 
 def depcopy(deps):
 	return dict((k, list(v)) for k, v in deps.items())
@@ -241,6 +246,8 @@ if '/' in __file__:
 else:
 	compiler_root = './'
 
+letterElem = dict(x=0, y=1, z=2, w=3, r=0, g=1, b=2, a=3)
+
 class Compiler(object):
 	def __init__(self, code, utility, language=False, shadertoy=False, minimize=False):
 		global _language
@@ -267,6 +274,7 @@ class Compiler(object):
 		self.renamed = {}
 		self.rename_i = 0
 		self.is_static_frame = False
+		self.typetags = {}
 		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
 		self.deps = {}
 		self.gdeps = {}
@@ -334,6 +342,19 @@ class Compiler(object):
 		self.emitted = ''
 		indentlevel = [1]
 		operators = 'neg + - / * ** < > <= >= == != && ||'.split(' ')
+		operator_names = {
+			'+' : 'add', 
+			'-' : 'sub', 
+			'*' : 'mul', 
+			'/' : 'div', 
+			'**' : 'pow', 
+			'<' : 'lt', 
+			'>' : 'gt', 
+			'<=' : 'lte', 
+			'>=' : 'gte', 
+			'==' : 'eq', 
+			'!=' : 'neq', 
+		}
 		precedence = {
 			'?:' : 1, 
 			'+'  : 2, 
@@ -386,17 +407,30 @@ class Compiler(object):
 					return format_float(atom)
 				return unicode(atom)
 
-			if atom[0] == '**':
+			if atom[0] == '**' and self.language != 'js':
 				if self.language == 'c++':
 					prefix = 'sf_'
 				else:
 					prefix = ''
 				return '%spow(%s, %s)' % (prefix, structure(atom[1]), structure(atom[2]))
-			if atom[0] in operators:
-				if atom[0] == 'neg':
-					return '-%s' % paren(atom[1], 'neg')
+			elif atom[0] in operators:
+				if self.language == 'js':
+					if atom[0] == 'neg':
+						if self.infertype(atom[1]) in ('float', 'int'):
+							return '-%s' % paren(atom[1], 'neg')
+						else:
+							pass
+					else:
+						ltype, rtype = self.infertype(atom[1]), self.infertype(atom[2])
+						if ltype == rtype == 'float' or ltype == rtype == 'int':
+							return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
+						else:
+							return '%s_%s_%s(%s, %s)' % (ltype, operator_names[atom[0]], rtype, structure(atom[1]), structure(atom[2]))
 				else:
-					return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
+					if atom[0] == 'neg':
+						return '-%s' % paren(atom[1], 'neg')
+					else:
+						return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
 			elif atom[0] == '=':
 				if atom[2] is None:
 					return '%s' % structure(atom[1])
@@ -418,13 +452,22 @@ class Compiler(object):
 				if not atom[2] and self.language == 'c++' and len(swizzle) > 2:
 					val = paren(atom[1], '.')
 					return 'vec%i(%s)' % (len(swizzle)-1, ', '.join('%s.%s' % (val, x) for x in swizzle[1:]))
+				elif not atom[2] and self.language == 'js':
+					val = paren(atom[1], '.')
+					if len(swizzle) > 2:
+						return '[%s]' % (', '.join('%s[%i]' % (val, letterElem[x]) for x in swizzle[1:]))
+					else:
+						return '%s[%i]' % (val, letterElem[swizzle[1]])
 				return '%s%s' % (paren(atom[1], '.'), swizzle)
 			elif atom[0] == 'var':
 				if atom[1].startswith('gl_') or atom[1] in self.globals or atom[1] in defd:
 					return self.rename(atom[1])
 				else:
 					defd.append(atom[1])
-					return '%s %s' % (locals[atom[1]].rename(), self.rename(atom[1]))
+					if self.language == 'js':
+						return 'var %s' % self.rename(atom[1])
+					else:
+						return '%s %s' % (locals[atom[1]].rename(), self.rename(atom[1]))
 			elif atom[0] == 'arg':
 				return self.rename(atom[1])
 			elif atom[0] == 'return':
@@ -453,7 +496,12 @@ class Compiler(object):
 			elif atom[0] == 'continue':
 				return 'continue'
 			elif atom[0] == 'print':
-				return 'cout << %s << endl' % paren(atom[1])
+				if self.language == 'c++':
+					return 'cout << %s << endl' % paren(atom[1])
+				elif self.language == 'js':
+					return 'console.log(%s)' % structure(atom[1])
+				else:
+					return ''
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
 				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
@@ -461,6 +509,8 @@ class Compiler(object):
 				return '%s[%s]' % (paren(atom[1], '[]'), structure(atom[2]))
 			elif atom[0] == 'carray':
 				return '{%s}' % (', '.join(structure(elem) for elem in atom[1:]))
+			elif self.language == 'js' and atom[0] in ('vec2', 'vec3', 'vec4'):
+				return '[%s]' % (', '.join(structure(elem) for elem in atom[1:]))
 			else:
 				if self.language == 'c++' and atom[0] in glfuncs:
 					prefix = 'sf_'
@@ -491,25 +541,29 @@ class Compiler(object):
 				checked.append(dep)
 		dead = [name for name in self.words if name not in required]
 
-		for name, elems in self.structs.items():
-			self.emitnl('struct %s {' % self.rename(name))
-			for ename, type in elems:
-				self.emitnl('\t%s %s;' % (type.rename(), self.rename(ename)))
-			if self.language == 'c++':
-				self.emitnl('\tSF_FUNC %s() {}' % self.rename(name))
-				self.emitnl('\tSF_FUNC %s(%s) : %s {}' % (
-					self.rename(name), 
-					', '.join('%s %s' % (type.rename(), self.rename(ename)) for ename, type in elems), 
-					', '.join('%s(%s)' % (self.rename(ename), self.rename(ename)) for ename, type in elems)
-				))
-			self.emitnl('};')
+		if self.language != 'js':
+			for name, elems in self.structs.items():
+				self.emitnl('struct %s {' % self.rename(name))
+				for ename, type in elems:
+					self.emitnl('\t%s %s;' % (type.rename(), self.rename(ename)))
+				if self.language == 'c++':
+					self.emitnl('\tSF_FUNC %s() {}' % self.rename(name))
+					self.emitnl('\tSF_FUNC %s(%s) : %s {}' % (
+						self.rename(name), 
+						', '.join('%s %s' % (type.rename(), self.rename(ename)) for ename, type in elems), 
+						', '.join('%s(%s)' % (self.rename(ename), self.rename(ename)) for ename, type in elems)
+					))
+				self.emitnl('};')
 		for name, type in self.globals.items():
 			if name.startswith('gl_') or ((self.shadertoy or self.language == 'c++') and 'uniform' in type.attributes):
 				continue
 			elif name not in self.gdeps or True not in [x not in dead for x in self.gdeps[name]]:
 				continue
 
-			self.emitnl(type.rename(), self.rename(name) + ';')
+			if self.language == 'js':
+				self.emitnl('var', self.rename(name) + ';')
+			else:
+				self.emitnl(type.rename(), self.rename(name) + ';')
 
 		deps = depcopy(self.deps)
 		wordorder = []
@@ -542,7 +596,10 @@ class Compiler(object):
 			prefix = ''
 			if self.language == 'c++':
 				prefix = 'SF_FUNC '
-			self.emitnl('%s%s %s(%s) {' % (prefix, self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
+			if self.language == 'js':
+				self.emitnl('function %s(%s) {' % (self.rename(name) if pname == name else pname, ', '.join(self.rename(self.wordtypes[name][2][i]) for i in xrange(len(self.wordtypes[name][0])))))
+			else:
+				self.emitnl('%s%s %s(%s) {' % (prefix, self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
 			for effect in effects:
 				prev = indentlevel[0]
 				line = structure(effect)
@@ -561,12 +618,20 @@ class Compiler(object):
 
 		return self.emitted
 
+	def addeffect(self, effect):
+		def tag(elem):
+			self.typetags[hash(elem)] = self.infertype(elem)
+			if isinstance(elem, tuple) or isinstance(elem, list):
+				map(tag, elem)
+		map(tag, effect)
+		self.effects.append(effect)
+
 	def predeclare(self, effects, argnames):
 		def vars_referenced(effect):
 			if not isinstance(effect, tuple) and not isinstance(effect, list):
-				return []
+				return list()
 			if effect[0] == 'var':
-				return [effect[1]]
+				return list(effect[1])
 			return reduce(lambda a, b: a + b, map(vars_referenced, effect))
 
 		declared = list(self.globals.keys())
@@ -589,7 +654,7 @@ class Compiler(object):
 			for ref in refs:
 				if ref in inside and ref not in need:
 					need.append(ref)
-		return [('=', ('var', var), None) for var in need if not var.startswith('gl_') and var not in decls[0]] + effects
+		return list(('=', ('var', var), None) for var in need if not var.startswith('gl_') and var not in decls[0]) + effects
 
 	def rename(self, name):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
@@ -877,14 +942,14 @@ class Compiler(object):
 			if isinstance(a, list):
 				if isinstance(b, list):
 					assert len(a) == len(b)
-					return ['array'] + map(lambda i: self.fold_constants(op, [a[i], b[i]]), xrange(1, len(a)))
+					return list(['array'] + map(lambda i: self.fold_constants(op, [a[i], b[i]]), xrange(1, len(a))))
 				elif False not in map(eligible, a[1 if len(a) > 0 and a[0] == 'array' else 0:]):
-					return ['array'] + map(lambda x: foldops[op](x, b), a[1:])
+					return list(['array'] + map(lambda x: foldops[op](x, b), a[1:]))
 				else:
 					return tuple([op, a, b])
 			elif isinstance(b, list):
 				if False not in map(eligible, b[1 if len(b) > 0 and b[0] == 'array' else 0:]):
-					return ['array'] + map(lambda x: foldops[op](a, x), b[1:])
+					return list(['array'] + map(lambda x: foldops[op](a, x), b[1:]))
 				else:
 					return tuple([op, a, b])
 			else:
@@ -933,7 +998,7 @@ class Compiler(object):
 		elif op == 'clamp' and False not in map(eligible, operands):
 			val, a, b = operands
 			if isinstance(val, list):
-				return ['array'] + [min(max(elem, a), b) for elem in val[1:]]
+				return list(['array'] + [min(max(elem, a), b) for elem in val[1:]])
 			else:
 				return min(max(val, a), b)
 
@@ -949,14 +1014,12 @@ class Compiler(object):
 				return True
 			return False
 
-		letterElem = dict(x=0, y=1, z=2, w=3, r=0, g=1, b=2, a=3)
-
 		if eligible(elem, top=True):
 			for swizzle in swizzles:
 				if len(swizzle) == 1:
 					self.rstack.push(elem[letterElem[swizzle] + 1])
 				else:
-					self.rstack.push(['array'] + [elem[letterElem[char] + 1] for char in swizzle])
+					self.rstack.push(list(['array'] + [elem[letterElem[char] + 1] for char in swizzle]))
 		elif isinstance(elem, tuple) and elem[0][0] == '.' and self.infertype(elem[1]).startswith('vec'):
 			reorder = elem[0][1:]
 			for swizzle in swizzles:
@@ -974,7 +1037,7 @@ class Compiler(object):
 		self.localorder = []
 		self.macrolocals = {}
 		self.macrolocals.update(self.macroglobals)
-		self.effects = []
+		self.effects = list()
 		if not pre:
 			self.argcount = len(self.wordtypes[name][0])+1
 			argtypes = self.wordtypes[name][0]
@@ -1020,7 +1083,7 @@ class Compiler(object):
 			elif token == '=':
 				var = self.rstack.pop()
 				value = self.rstack.pop()
-				self.effects.append(('=', var, value))
+				self.addeffect(('=', var, value))
 			elif len(token) > 1 and token[0] == '.':
 				if self.language == 'c++':
 					elem = self.ensure_stored(pop=True)
@@ -1066,7 +1129,7 @@ class Compiler(object):
 			elif token in self.words:
 				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1])
 				if self.wordtypes[token][1] == 'void':
-					self.effects.append(elem)
+					self.addeffect(elem)
 				else:
 					self.rstack.push(elem)
 			elif token == '[':
@@ -1075,11 +1138,11 @@ class Compiler(object):
 			elif token == ']':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(['array'] + temp)
+				self.rstack.push(list(['array'] + temp))
 			elif token == ']m':
 				temp = self.rstack.list
 				self.rstack = self.sstack.pop()
-				self.rstack.push(['array'] + temp)
+				self.rstack.push(list(['array'] + temp))
 				self.amat()
 			elif token == '{':
 				self.rstack.push(self.block())
@@ -1093,7 +1156,7 @@ class Compiler(object):
 
 		assert len(self.rstack) <= 1
 		if len(self.rstack) == 1:
-			self.effects.append(('return', self.rstack.pop()))
+			self.addeffect(('return', self.rstack.pop()))
 
 		self.effects = self.vectorize(self.effects)
 		return self.locals, self.effects, self.localorder, self.argnames
@@ -1103,7 +1166,7 @@ class Compiler(object):
 			if not isinstance(arr, list) or len(arr) < 2 or arr[0] != 'array':
 				return self.vectorize(arr)
 
-			narr = ['array']
+			narr = list(['array'])
 			for i, val in enumerate(arr[1:]):
 				if isinstance(val, list):
 					if len(val) > 1 and val[0] == 'array':
@@ -1233,13 +1296,13 @@ class Compiler(object):
 			self.locals[name] = type
 			if name not in self.localorder:
 				self.localorder.append(name)
-			self.effects.append(('=', ('var', name), None))
+			self.addeffect(('=', ('var', name), None))
 		else:
 			elem = self.rstack.pop()
 			if name not in self.locals and name not in self.globals:
 				self.locals[name] = Type(self.infertype(elem))
 				self.localorder.append(name)
-			self.effects.append(('=', ('var', name), elem))
+			self.addeffect(('=', ('var', name), elem))
 
 	def map(self, name):
 		tlist = self.rstack.pop()
@@ -1267,7 +1330,7 @@ class Compiler(object):
 			self.veca()
 			tlist = self.rstack.pop()
 		
-		tlist = ['array'] + [['array', float(i), e] for i, e in enumerate(tlist[1:])]
+		tlist = list(['array'] + [['array', float(i), e] for i, e in enumerate(tlist[1:])])
 		self.rstack.push(tlist)
 
 	def reduce(self, name):
@@ -1322,6 +1385,8 @@ class Compiler(object):
 
 	def infertype(self, expr):
 		if isinstance(expr, tuple) or isinstance(expr, list):
+			if hash(expr) in self.typetags:
+				return self.typetags[hash(expr)]
 			if expr[0] == 'var':
 				name = expr[1]
 				if name in self.macrolocals and isinstance(self.macrolocals[name], list) and self.macrolocals[name][0] == 'var':
@@ -1405,7 +1470,7 @@ class Compiler(object):
 			temp = 'var_%i' % len(self.locals)
 			self.locals[temp] = Type(self.infertype(top))
 			temp = ('var', temp)
-			self.effects.append(('=', temp, top))
+			self.addeffect(('=', temp, top))
 			if not pop:
 				self.rstack.push(temp)
 			return temp
@@ -1435,7 +1500,7 @@ class Compiler(object):
 			if self.infertype(arr) in self.structs:
 				arr = self.ensure_stored(pop=True)
 				struct = self.structs[self.infertype(arr)]
-				self.rstack.push(['array'] + [('.' + elem[0], arr, True) for elem in struct])
+				self.rstack.push(list(['array'] + [('.' + elem[0], arr, True) for elem in struct]))
 			elif not self.infertype(arr).startswith('vec'):
 				return
 			else:
@@ -1456,7 +1521,7 @@ class Compiler(object):
 		assert len(color) == 6
 		self.resetprecision()
 		r, g, b = [float(int(color[i:i+2], 16)) / 255 for i in xrange(0, 6, 2)]
-		self.rstack.push(['array', r, g, b])
+		self.rstack.push(list(['array', r, g, b]))
 
 	def avec(self):
 		tlist = self.rstack.pop()
@@ -1478,7 +1543,7 @@ class Compiler(object):
 		type = self.infertype(vec)
 		assert 'vec' in type
 		size = int(type[type.find('vec')+3:])
-		self.rstack.push(['array'] + [('.' + 'xyzw'[i], vec, False) for i in xrange(size)])
+		self.rstack.push(list(['array'] + [('.' + 'xyzw'[i], vec, False) for i in xrange(size)]))
 
 	@word('amat')
 	def amat(self):
@@ -1572,7 +1637,7 @@ class Compiler(object):
 		block = self.blockify(self.rstack.pop())
 		var = self.tempname()
 
-		self.effects.append(('for', var, 0, count))
+		self.addeffect(('for', var, 0, count))
 		self.rstack.push('__term__')
 		self.rstack.push(('var', var))
 		self.atoms.insert(block.atoms + ['__endblock'])
@@ -1619,7 +1684,7 @@ class Compiler(object):
 		cond = self.rstack.pop()
 		block = self.blockify(self.rstack.pop())
 
-		self.effects.append(('if', cond))
+		self.addeffect(('if', cond))
 		self.rstack.push('__term__')
 		self.atoms.insert(block.atoms + ['__endblock'])
 
@@ -1629,7 +1694,7 @@ class Compiler(object):
 		else_ = self.blockify(self.rstack.pop())
 		if_ = self.blockify(self.rstack.pop())
 
-		self.effects.append(('if', cond))
+		self.addeffect(('if', cond))
 		self.rstack.push(else_.atoms)
 		self.rstack.push('__term__')
 		self.atoms.insert(if_.atoms + ['__else'])
@@ -1646,24 +1711,24 @@ class Compiler(object):
 			ass.append('=' + var)
 			expand = [var] + expand
 			self.assign(var)
-		self.effects.append(('else', ))
+		self.addeffect(('else', ))
 		else_ = self.rstack.pop()
 		self.rstack.push('__term__')
 		self.atoms.insert(else_ + ass + ['__endblock'] + expand)
 
 	@word('__endblock')
 	def endblock(self):
-		self.effects.append(('endblock', ))
+		self.addeffect(('endblock', ))
 		while self.rstack.pop() != '__term__':
 			pass
 
 	@word('break')
 	def break_(self):
-		self.effects.append(('break', ))
+		self.addeffect(('break', ))
 
 	@word('continue')
 	def continue_(self):
-		self.effects.append(('continue', ))
+		self.addeffect(('continue', ))
 
 	@word('select')
 	def select(self):
@@ -1675,11 +1740,11 @@ class Compiler(object):
 
 	@word('return')
 	def return_(self):
-		self.effects.append(('return', self.rstack.pop()))
+		self.addeffect(('return', self.rstack.pop()))
 
 	@word('return-nil')
 	def return_nil(self):
-		self.effects.append(('return', ))
+		self.addeffect(('return', ))
 
 	@word('printdbg')
 	def printdbg(self):
@@ -1687,16 +1752,16 @@ class Compiler(object):
 
 	@word('print')
 	def print_(self):
-		if self.language == 'c++':
+		if self.language in ('c++', 'js'):
 			self.dup()
-			self.effects.append(('print', self.rstack.pop()))
+			self.addeffect(('print', self.rstack.pop()))
 
 	@word('switch')
 	def switch(self):
 		val = self.ensure_stored(pop=True)
 		arr = self.rstack.pop()
 		assert arr[0] == 'array'
-		elems = ['array']
+		elems = list(['array'])
 		for i in xrange(1, len(arr), 2):
 			if i == len(arr) - 1:
 				elems.append(arr[i])
@@ -1715,7 +1780,7 @@ class Compiler(object):
 		(cond, block), arr = arr[1:3], arr[3:]
 		block = self.blockify(block)
 
-		self.effects.append(('if', cond))
+		self.addeffect(('if', cond))
 		self.rstack.push(arr)
 		self.rstack.push(None)
 		self.rstack.push('__term__')
@@ -1738,17 +1803,17 @@ class Compiler(object):
 			self.assign(vars[i])
 		arr = self.rstack.pop()
 		if len(arr) == 0:
-			self.effects.append(('endblock', ))
+			self.addeffect(('endblock', ))
 			vars.reverse()
 			self.atoms.insert(vars)
 			return
 		elif len(arr) == 1:
 			block = arr[0]
 			arr = []
-			self.effects.append(('else', ))
+			self.addeffect(('else', ))
 		else:
 			(cond, block), arr = arr[:2], arr[2:]
-			self.effects.append(('elif', cond))
+			self.addeffect(('elif', cond))
 
 		block = self.blockify(block)
 		self.rstack.push(arr)
@@ -1780,7 +1845,7 @@ class Compiler(object):
 			return cond in (True, False)
 		def not_all(cond):
 			if isinstance(cond, list):
-				return ['array'] + map(not_all, cond[1:])
+				return list(['array'] + map(not_all, cond[1:]))
 			return not cond
 		val = self.rstack.pop()
 		if foldable(val):
@@ -1902,7 +1967,7 @@ class Compiler(object):
 	def range(self, elems):
 		incl = True in ['+' in elem for elem in elems]
 		elems = map(float, elems)
-		val = ['array']
+		val = list(['array'])
 		if len(elems) == 1:
 			start, max, step = 0., elems[0], 1.
 		elif len(elems) == 2:
@@ -1920,12 +1985,12 @@ class Compiler(object):
 	def range_word(self):
 		self.int()
 		top = self.rstack.pop()
-		self.rstack.push(['array'] + list(range(0, top)))
+		self.rstack.push(list(['array'] + list(range(0, top))))
 
 	@word('upto')
 	def upto(self):
 		top = self.rstack.pop()
-		self.rstack.push(['array'] + list(map(float, range(int(top)))))
+		self.rstack.push(list(['array'] + list(map(float, range(int(top))))))
 
 	@word('static-frame')
 	def static_frame(self):
@@ -1941,7 +2006,7 @@ def main():
 						help='enable Shadertoy mode')
 	parser.add_argument('--minimize', action='store_true', 
 						help='minimize GLSL output')
-	parser.add_argument('--language', choices=['glsl', 'c++', 'c++-gmp'], default='glsl', 
+	parser.add_argument('--language', choices=['glsl', 'c++', 'c++-gmp', 'js'], default='glsl', 
 						help='language output')
 
 	args = parser.parse_args()

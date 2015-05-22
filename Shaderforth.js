@@ -1,0 +1,302 @@
+// vec2 operators
+function vec2_add_vec2(a, b) {
+	return [a[0] + b[0], a[1] + b[1]];
+}
+function vec2_add_float(a, b) {
+	return [a[0] + b, a[1] + b];
+}
+function float_add_vec2(a, b) {
+	return [a + b[0], a + b[1]];
+}
+function vec2_sub_vec2(a, b) {
+	return [a[0] - b[0], a[1] - b[1]];
+}
+function vec2_sub_float(a, b) {
+	return [a[0] - b, a[1] - b];
+}
+function float_sub_vec2(a, b) {
+	return [a - b[0], a - b[1]];
+}
+function vec2_mul_vec2(a, b) {
+	return [a[0] * b[0], a[1] * b[1]];
+}
+function vec2_mul_float(a, b) {
+	return [a[0] * b, a[1] * b];
+}
+function float_mul_vec2(a, b) {
+	return [a * b[0], a * b[1]];
+}
+function vec2_div_vec2(a, b) {
+	return [a[0] / b[0], a[1] / b[1]];
+}
+function vec2_div_float(a, b) {
+	return [a[0] / b, a[1] / b];
+}
+function float_div_vec2(a, b) {
+	return [a / b[0], a / b[1]];
+}
+function vec2_pow_vec2(a, b) {
+	return [math.pow(a[0], b[0]), math.pow(a[1], b[1])];
+}
+function vec2_pow_float(a, b) {
+	return [math.pow(a[0], b), math.pow(a[1], b)];
+}
+function float_pow_vec2(a, b) {
+	return [math.pow(a, b[0]), math.pow(a, b[1])];
+}
+function vec2_lt_vec2(a, b) {
+	return [a[0] < b[0], a[1] < b[1]];
+}
+function vec2_lt_float(a, b) {
+	return [a[0] < b, a[1] < b];
+}
+function float_lt_vec2(a, b) {
+	return [a < b[0], a < b[1]];
+}
+function vec2_gt_vec2(a, b) {
+	return [a[0] > b[0], a[1] > b[1]];
+}
+function vec2_gt_float(a, b) {
+	return [a[0] > b, a[1] > b];
+}
+function float_gt_vec2(a, b) {
+	return [a > b[0], a > b[1]];
+}
+function vec2_lte_vec2(a, b) {
+	return [a[0] <= b[0], a[1] <= b[1]];
+}
+function vec2_lte_float(a, b) {
+	return [a[0] <= b, a[1] <= b];
+}
+function float_lte_vec2(a, b) {
+	return [a <= b[0], a <= b[1]];
+}
+function vec2_gte_vec2(a, b) {
+	return [a[0] >= b[0], a[1] >= b[1]];
+}
+function vec2_gte_float(a, b) {
+	return [a[0] >= b, a[1] >= b];
+}
+function float_gte_vec2(a, b) {
+	return [a >= b[0], a >= b[1]];
+}
+function vec2_eq_vec2(a, b) {
+	return [a[0] == b[0], a[1] == b[1]];
+}
+function vec2_eq_float(a, b) {
+	return [a[0] == b, a[1] == b];
+}
+function float_eq_vec2(a, b) {
+	return [a == b[0], a == b[1]];
+}
+function vec2_neq_vec2(a, b) {
+	return [a[0] != b[0], a[1] != b[1]];
+}
+function vec2_neq_float(a, b) {
+	return [a[0] != b, a[1] != b];
+}
+function float_neq_vec2(a, b) {
+	return [a != b[0], a != b[1]];
+}
+
+// vec3 operators
+function vec3_add_vec3(a, b) {
+	return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+function vec3_add_float(a, b) {
+	return [a[0] + b, a[1] + b, a[2] + b];
+}
+function float_add_vec3(a, b) {
+	return [a + b[0], a + b[1], a + b[2]];
+}
+function vec3_sub_vec3(a, b) {
+	return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function vec3_sub_float(a, b) {
+	return [a[0] - b, a[1] - b, a[2] - b];
+}
+function float_sub_vec3(a, b) {
+	return [a - b[0], a - b[1], a - b[2]];
+}
+function vec3_mul_vec3(a, b) {
+	return [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
+}
+function vec3_mul_float(a, b) {
+	return [a[0] * b, a[1] * b, a[2] * b];
+}
+function float_mul_vec3(a, b) {
+	return [a * b[0], a * b[1], a * b[2]];
+}
+function vec3_div_vec3(a, b) {
+	return [a[0] / b[0], a[1] / b[1], a[2] / b[2]];
+}
+function vec3_div_float(a, b) {
+	return [a[0] / b, a[1] / b, a[2] / b];
+}
+function float_div_vec3(a, b) {
+	return [a / b[0], a / b[1], a / b[2]];
+}
+function vec3_pow_vec3(a, b) {
+	return [math.pow(a[0], b[0]), math.pow(a[1], b[1]), math.pow(a[2], b[2])];
+}
+function vec3_pow_float(a, b) {
+	return [math.pow(a[0], b), math.pow(a[1], b), math.pow(a[2], b)];
+}
+function float_pow_vec3(a, b) {
+	return [math.pow(a, b[0]), math.pow(a, b[1]), math.pow(a, b[2])];
+}
+function vec3_lt_vec3(a, b) {
+	return [a[0] < b[0], a[1] < b[1], a[2] < b[2]];
+}
+function vec3_lt_float(a, b) {
+	return [a[0] < b, a[1] < b, a[2] < b];
+}
+function float_lt_vec3(a, b) {
+	return [a < b[0], a < b[1], a < b[2]];
+}
+function vec3_gt_vec3(a, b) {
+	return [a[0] > b[0], a[1] > b[1], a[2] > b[2]];
+}
+function vec3_gt_float(a, b) {
+	return [a[0] > b, a[1] > b, a[2] > b];
+}
+function float_gt_vec3(a, b) {
+	return [a > b[0], a > b[1], a > b[2]];
+}
+function vec3_lte_vec3(a, b) {
+	return [a[0] <= b[0], a[1] <= b[1], a[2] <= b[2]];
+}
+function vec3_lte_float(a, b) {
+	return [a[0] <= b, a[1] <= b, a[2] <= b];
+}
+function float_lte_vec3(a, b) {
+	return [a <= b[0], a <= b[1], a <= b[2]];
+}
+function vec3_gte_vec3(a, b) {
+	return [a[0] >= b[0], a[1] >= b[1], a[2] >= b[2]];
+}
+function vec3_gte_float(a, b) {
+	return [a[0] >= b, a[1] >= b, a[2] >= b];
+}
+function float_gte_vec3(a, b) {
+	return [a >= b[0], a >= b[1], a >= b[2]];
+}
+function vec3_eq_vec3(a, b) {
+	return [a[0] == b[0], a[1] == b[1], a[2] == b[2]];
+}
+function vec3_eq_float(a, b) {
+	return [a[0] == b, a[1] == b, a[2] == b];
+}
+function float_eq_vec3(a, b) {
+	return [a == b[0], a == b[1], a == b[2]];
+}
+function vec3_neq_vec3(a, b) {
+	return [a[0] != b[0], a[1] != b[1], a[2] != b[2]];
+}
+function vec3_neq_float(a, b) {
+	return [a[0] != b, a[1] != b, a[2] != b];
+}
+function float_neq_vec3(a, b) {
+	return [a != b[0], a != b[1], a != b[2]];
+}
+
+// vec4 operators
+function vec4_add_vec4(a, b) {
+	return [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]];
+}
+function vec4_add_float(a, b) {
+	return [a[0] + b, a[1] + b, a[2] + b, a[3] + b];
+}
+function float_add_vec4(a, b) {
+	return [a + b[0], a + b[1], a + b[2], a + b[3]];
+}
+function vec4_sub_vec4(a, b) {
+	return [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]];
+}
+function vec4_sub_float(a, b) {
+	return [a[0] - b, a[1] - b, a[2] - b, a[3] - b];
+}
+function float_sub_vec4(a, b) {
+	return [a - b[0], a - b[1], a - b[2], a - b[3]];
+}
+function vec4_mul_vec4(a, b) {
+	return [a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]];
+}
+function vec4_mul_float(a, b) {
+	return [a[0] * b, a[1] * b, a[2] * b, a[3] * b];
+}
+function float_mul_vec4(a, b) {
+	return [a * b[0], a * b[1], a * b[2], a * b[3]];
+}
+function vec4_div_vec4(a, b) {
+	return [a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3]];
+}
+function vec4_div_float(a, b) {
+	return [a[0] / b, a[1] / b, a[2] / b, a[3] / b];
+}
+function float_div_vec4(a, b) {
+	return [a / b[0], a / b[1], a / b[2], a / b[3]];
+}
+function vec4_pow_vec4(a, b) {
+	return [math.pow(a[0], b[0]), math.pow(a[1], b[1]), math.pow(a[2], b[2]), math.pow(a[3], b[3])];
+}
+function vec4_pow_float(a, b) {
+	return [math.pow(a[0], b), math.pow(a[1], b), math.pow(a[2], b), math.pow(a[3], b)];
+}
+function float_pow_vec4(a, b) {
+	return [math.pow(a, b[0]), math.pow(a, b[1]), math.pow(a, b[2]), math.pow(a, b[3])];
+}
+function vec4_lt_vec4(a, b) {
+	return [a[0] < b[0], a[1] < b[1], a[2] < b[2], a[3] < b[3]];
+}
+function vec4_lt_float(a, b) {
+	return [a[0] < b, a[1] < b, a[2] < b, a[3] < b];
+}
+function float_lt_vec4(a, b) {
+	return [a < b[0], a < b[1], a < b[2], a < b[3]];
+}
+function vec4_gt_vec4(a, b) {
+	return [a[0] > b[0], a[1] > b[1], a[2] > b[2], a[3] > b[3]];
+}
+function vec4_gt_float(a, b) {
+	return [a[0] > b, a[1] > b, a[2] > b, a[3] > b];
+}
+function float_gt_vec4(a, b) {
+	return [a > b[0], a > b[1], a > b[2], a > b[3]];
+}
+function vec4_lte_vec4(a, b) {
+	return [a[0] <= b[0], a[1] <= b[1], a[2] <= b[2], a[3] <= b[3]];
+}
+function vec4_lte_float(a, b) {
+	return [a[0] <= b, a[1] <= b, a[2] <= b, a[3] <= b];
+}
+function float_lte_vec4(a, b) {
+	return [a <= b[0], a <= b[1], a <= b[2], a <= b[3]];
+}
+function vec4_gte_vec4(a, b) {
+	return [a[0] >= b[0], a[1] >= b[1], a[2] >= b[2], a[3] >= b[3]];
+}
+function vec4_gte_float(a, b) {
+	return [a[0] >= b, a[1] >= b, a[2] >= b, a[3] >= b];
+}
+function float_gte_vec4(a, b) {
+	return [a >= b[0], a >= b[1], a >= b[2], a >= b[3]];
+}
+function vec4_eq_vec4(a, b) {
+	return [a[0] == b[0], a[1] == b[1], a[2] == b[2], a[3] == b[3]];
+}
+function vec4_eq_float(a, b) {
+	return [a[0] == b, a[1] == b, a[2] == b, a[3] == b];
+}
+function float_eq_vec4(a, b) {
+	return [a == b[0], a == b[1], a == b[2], a == b[3]];
+}
+function vec4_neq_vec4(a, b) {
+	return [a[0] != b[0], a[1] != b[1], a[2] != b[2], a[3] != b[3]];
+}
+function vec4_neq_float(a, b) {
+	return [a[0] != b, a[1] != b, a[2] != b, a[3] != b];
+}
+function float_neq_vec4(a, b) {
+	return [a != b[0], a != b[1], a != b[2], a != b[3]];
+}
