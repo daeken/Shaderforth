@@ -181,11 +181,24 @@ class Code(object):
 		return 'Code(parsed=%r, rest=%r)' % (self.elems[:self.i], self.elems[self.i:])
 
 class Block(object):
-	def __init__(self, compiler, atoms):
+	def __init__(self, compiler, atoms, spec):
 		self.compiler = compiler
 		self.macrolocals = {k : v for k, v in compiler.macrolocals.items()}
 		self.localstack = []
 		self.atoms = ['__startclosure', self] + list(atoms) + ['__endclosure']
+		self.spec = spec
+		self.args = None
+
+	def callback(self):
+		self.args = ['block_%i_arg_%i' % (self.compiler.rename_i, i) for i in xrange(len(self.spec))]
+		for i, arg in enumerate(self.args):
+			self.compiler.locals[arg] = self.cbtype.args[i]
+		self.compiler.rename_i += 1
+		for arg in self.args[::-1]:
+			self.compiler.rstack.push(('var', arg))
+
+	def callback_type(self, type):
+		self.cbtype = type
 
 	def invoke(self):
 		self.localstack.append({k : v for k, v in self.compiler.macrolocals.items()})
@@ -194,6 +207,13 @@ class Block(object):
 
 	def end(self):
 		self.compiler.macrolocals.update(self.localstack.pop())
+
+class Callback(object):
+	def __init__(self, args, ret):
+		self.args, self.ret = map(Type, args), Type(ret)
+
+	def __repr__(self):
+		return 'Callback(%r, %r)' % (self.args, self.ret)
 
 def word(symbol, consumes=0):
 	def dec(fn):
@@ -320,6 +340,8 @@ class Compiler(object):
 		self.rename_i = 0
 		self.is_static_frame = False
 		self.typetags = {}
+		self.wordtypes = {}
+		self.externs = {}
 		self.words, self.wordtypes, self.macros, self.structs, self.externs = self.parsewords(self.code)
 		self.deps = {}
 		self.gdeps = {}
@@ -384,6 +406,30 @@ class Compiler(object):
 		self.emitted += ' '.join(args) + '\n'
 
 	def output(self, main):
+		def emiteffects(effects, out=True):
+			accum = ''
+			for effect in effects:
+				prev = indentlevel[0]
+				line = structure(effect)
+				sup = False
+				if isinstance(line, tuple):
+					line, sup = line
+				if sup:
+					if prev <= indentlevel[0]:
+						off = 1
+					else:
+						off = 0
+					if out:
+						self.emitnl('\t' * (indentlevel[0] - off) + line)
+					else:
+						accum += '\t' * (indentlevel[0] - off) + line + '\n'
+				else:
+					if out:
+						self.emitnl('\t' * indentlevel[0] + line + ';')
+					else:
+						accum += '\t' * indentlevel[0] + line + ';\n'
+			return accum
+
 		self.emitted = ''
 		indentlevel = [1]
 		operators = 'neg + - / * ** < > <= >= == != && ||'.split(' ')
@@ -443,7 +489,15 @@ class Compiler(object):
 				need = False
 			return '(%s)' % structure(atom) if need else structure(atom)
 		def structure(atom):
-			if not isinstance(atom, tuple):
+			if isinstance(atom, Block):
+				indentlevel[0] += 1
+				defd.extend(atom.args)
+				body = emiteffects(atom.effects, out=False)
+				for arg in atom.args:
+					defd.remove(arg)
+				indentlevel[0] -= 1
+				return 'function(%s) {\n%s%s}' % (', '.join(atom.args), body, '\t' * indentlevel[0])
+			elif not isinstance(atom, tuple):
 				if atom is True:
 					return 'true'
 				elif atom is False:
@@ -563,7 +617,7 @@ class Compiler(object):
 					return 'console.log(%s)' % structure(atom[1])
 				else:
 					return ''
-			elif atom[0] == 'string':
+			elif atom[0] == 'string-literal':
 				assert self.language == 'js' # XXX: C++ support needs to be added.
 				# XXX: Need to always double quote, for C++
 				str = `atom[1]`
@@ -571,6 +625,10 @@ class Compiler(object):
 					return str[1:]
 				else:
 					return str
+			elif atom[0] == 'string':
+				assert self.language == 'js' # XXX: C++ support needs to be added.
+				
+				return paren(atom[1]) + '.toString()'
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
 				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
@@ -682,30 +740,24 @@ class Compiler(object):
 				self.emitnl('function %s(%s) {' % (self.rename(name) if pname == name else pname, ', '.join(self.rename(self.wordtypes[name][2][i]) for i in xrange(len(self.wordtypes[name][0])))))
 			else:
 				self.emitnl('%s%s %s(%s) {' % (prefix, self.rename(self.wordtypes[name][1]) if pname != 'main' else 'void', self.rename(name) if pname == name else pname, ', '.join('%s %s' % (self.rename(type), self.rename(self.wordtypes[name][2][i])) for i, type in enumerate(self.wordtypes[name][0]))))
-			for effect in effects:
-				prev = indentlevel[0]
-				line = structure(effect)
-				sup = False
-				if isinstance(line, tuple):
-					line, sup = line
-				if sup:
-					if prev <= indentlevel[0]:
-						off = 1
-					else:
-						off = 0
-					self.emitnl('\t' * (indentlevel[0] - off) + line)
-				else:
-					self.emitnl('\t' * indentlevel[0] + line + ';')
+			emiteffects(effects)
 			self.emitnl('}')
 
 		return self.emitted
 
 	def addeffect(self, effect):
-		def tag(elem):
+		def tag_and_blockify(elem):
 			self.typetags[hash(elem)] = self.infertype(elem)
-			if isinstance(elem, tuple) or isinstance(elem, list):
-				map(tag, elem)
-		map(tag, effect)
+			if isinstance(elem, tuple):
+				return tuple(map(tag_and_blockify, elem))
+			elif isinstance(elem, list):
+				return list(map(tag_and_blockify, elem))
+			elif isinstance(elem, Block):
+				self.atoms.insert(['__start_callback', elem])
+				return elem
+			else:
+				return elem
+		effect = tag_and_blockify(effect)
 		self.effects.append(effect)
 
 	def predeclare(self, effects, argnames):
@@ -801,6 +853,45 @@ class Compiler(object):
 				code.i = start
 
 		return code.elems
+
+	def parse_arg_type(self, type):
+		if type[0] == '(' and type[-1] == ')':
+			args = []
+			ret = 'void'
+			i = 1
+			nest = None
+			in_ret = False
+			while i < len(type)-1:
+				if type[i] == '(':
+					nest = '('
+					i += 1
+				elif type[i] == ')':
+					if in_ret:
+						ret = self.parse_arg_type(nest + ')')
+					else:
+						args.append(self.parse_arg_type(nest + ')'))
+					nest = None
+					i += 1
+				elif nest is not None:
+					nest += type[i]
+					i += 1
+				elif type[i] == '-' and type[i+1] == '>':
+					i += 2
+					in_ret = True
+					continue
+				else:
+					start = i
+					while i < len(type)-1 and type[i] not in '*-':
+						i += 1
+					if in_ret:
+						ret = type[start:i]
+					else:
+						args.append(type[start:i])
+					if type[i] == '*':
+						i += 1
+			return Callback(args, ret)
+
+		return type
 
 	def parsewords(self, code):
 		def sanitize(name, atoms):
@@ -910,6 +1001,7 @@ class Compiler(object):
 							else:
 								args.append(token[1])
 								argnames.append(token[0])
+					args = map(self.parse_arg_type, args)
 					parsed.consume()
 					assert len([_ for _ in argnames if _ != None]) == 0 or None not in argnames
 					if None in argnames:
@@ -1226,6 +1318,11 @@ class Compiler(object):
 				else:
 					self.rstack.push(elem)
 			elif token in self.externs:
+				for i, type in enumerate(self.externs[token][0]):
+					arg = self.rstack.retrieve(i)
+					if isinstance(type, Callback):
+						assert isinstance(arg, Block)
+						arg.callback_type(type)
 				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
 				if self.externs[token][1] == 'void':
 					self.addeffect(elem)
@@ -1315,6 +1412,7 @@ class Compiler(object):
 				if depth == 0:
 					break
 		atoms = atoms[:-1]
+		spec = []
 		if len(atoms) and (atoms[0] == '(' or (atoms[0] != '(' and self.has_underscore(atoms))):
 			if atoms[0] != '(' and self.has_underscore(atoms):
 				spec = ['_']
@@ -1363,7 +1461,7 @@ class Compiler(object):
 					atoms[i] = elem[0] + 'macro_' + name + '_' + elem[1:]
 			atoms = preamble + atoms
 
-		return Block(self, atoms)
+		return Block(self, atoms, spec)
 
 	def tempname(self):
 		self.tempi += 1
@@ -1720,7 +1818,7 @@ class Compiler(object):
 		if isinstance(atom, Block):
 			return atom
 		elif isinstance(atom, list):
-			return Block(self, atom)
+			return Block(self, atom, [])
 
 		if atom in self.macrolocals:
 			atom = self.macrolocals[atom]
@@ -1728,8 +1826,8 @@ class Compiler(object):
 				return atom
 
 		if atom in self.macros:
-			return Block(self, self.macros[atom])
-		return Block(self, [atom])
+			return Block(self, self.macros[atom], [])
+		return Block(self, [atom], [])
 
 	@word('times')
 	def times(self):
@@ -2099,7 +2197,28 @@ class Compiler(object):
 
 	@word('str-load', 1)
 	def str_load(self, str):
-		self.rstack.push(('string', str))
+		self.rstack.push(('string-literal', str))
+
+	@word('string')
+	def string(self):
+		self.rstack.push(('string', self.rstack.pop()))
+
+	@word('__start_callback', 1)
+	def start_callback(self, block):
+		prev_effects = self.effects
+		self.effects = []
+		self.rstack.push('__callback__term__')
+		block.callback()
+		self.atoms.insert(block.atoms + ['__end_callback', block, prev_effects])
+
+	@word('__end_callback', 2)
+	def end_callback(self, effects, block):
+		retval = self.rstack.pop()
+		if retval != '__callback__term__':
+			self.addeffect(('return', retval))
+			assert self.rstack.pop() == '__callback__term__'
+		block.effects = self.effects
+		self.effects = effects
 
 def main():
 	import argparse
