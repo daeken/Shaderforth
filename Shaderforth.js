@@ -36,13 +36,13 @@ function float_div_vec2(a, b) {
 	return [a / b[0], a / b[1]];
 }
 function vec2_pow_vec2(a, b) {
-	return [math.pow(a[0], b[0]), math.pow(a[1], b[1])];
+	return [Math.pow(a[0], b[0]), Math.pow(a[1], b[1])];
 }
 function vec2_pow_float(a, b) {
-	return [math.pow(a[0], b), math.pow(a[1], b)];
+	return [Math.pow(a[0], b), Math.pow(a[1], b)];
 }
 function float_pow_vec2(a, b) {
-	return [math.pow(a, b[0]), math.pow(a, b[1])];
+	return [Math.pow(a, b[0]), Math.pow(a, b[1])];
 }
 function vec2_lt_vec2(a, b) {
 	return [a[0] < b[0], a[1] < b[1]];
@@ -137,13 +137,13 @@ function float_div_vec3(a, b) {
 	return [a / b[0], a / b[1], a / b[2]];
 }
 function vec3_pow_vec3(a, b) {
-	return [math.pow(a[0], b[0]), math.pow(a[1], b[1]), math.pow(a[2], b[2])];
+	return [Math.pow(a[0], b[0]), Math.pow(a[1], b[1]), Math.pow(a[2], b[2])];
 }
 function vec3_pow_float(a, b) {
-	return [math.pow(a[0], b), math.pow(a[1], b), math.pow(a[2], b)];
+	return [Math.pow(a[0], b), Math.pow(a[1], b), Math.pow(a[2], b)];
 }
 function float_pow_vec3(a, b) {
-	return [math.pow(a, b[0]), math.pow(a, b[1]), math.pow(a, b[2])];
+	return [Math.pow(a, b[0]), Math.pow(a, b[1]), Math.pow(a, b[2])];
 }
 function vec3_lt_vec3(a, b) {
 	return [a[0] < b[0], a[1] < b[1], a[2] < b[2]];
@@ -238,13 +238,13 @@ function float_div_vec4(a, b) {
 	return [a / b[0], a / b[1], a / b[2], a / b[3]];
 }
 function vec4_pow_vec4(a, b) {
-	return [math.pow(a[0], b[0]), math.pow(a[1], b[1]), math.pow(a[2], b[2]), math.pow(a[3], b[3])];
+	return [Math.pow(a[0], b[0]), Math.pow(a[1], b[1]), Math.pow(a[2], b[2]), Math.pow(a[3], b[3])];
 }
 function vec4_pow_float(a, b) {
-	return [math.pow(a[0], b), math.pow(a[1], b), math.pow(a[2], b), math.pow(a[3], b)];
+	return [Math.pow(a[0], b), Math.pow(a[1], b), Math.pow(a[2], b), Math.pow(a[3], b)];
 }
 function float_pow_vec4(a, b) {
-	return [math.pow(a, b[0]), math.pow(a, b[1]), math.pow(a, b[2]), math.pow(a, b[3])];
+	return [Math.pow(a, b[0]), Math.pow(a, b[1]), Math.pow(a, b[2]), Math.pow(a, b[3])];
 }
 function vec4_lt_vec4(a, b) {
 	return [a[0] < b[0], a[1] < b[1], a[2] < b[2], a[3] < b[3]];

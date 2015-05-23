@@ -423,7 +423,10 @@ class Compiler(object):
 					else:
 						ltype, rtype = self.infertype(atom[1]), self.infertype(atom[2])
 						if ltype == rtype == 'float' or ltype == rtype == 'int':
-							return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
+							if atom[0] == '**':
+								return 'Math.pow(%s, %s)' % (structure(atom[1]), structure(atom[2]))
+							else:
+								return '%s %s %s' % (paren(atom[1], atom[0], True), atom[0], paren(atom[2], atom[0], False))
 						else:
 							return '%s_%s_%s(%s, %s)' % (ltype, operator_names[atom[0]], rtype, structure(atom[1]), structure(atom[2]))
 				else:
