@@ -151,6 +151,9 @@ class Stack(object):
 			self.list = self.list[:offset] + self.list[offset+1:]
 		return elem
 
+	def replace(self, offset, value):
+		self.list = self.list[:offset] + [value] + self.list[offset+1:]
+
 	def __len__(self):
 		return len(self.list)
 
@@ -190,7 +193,7 @@ class Block(object):
 		self.args = None
 
 	def callback(self):
-		self.args = ['block_%i_arg_%i' % (self.compiler.rename_i, i) for i in xrange(len(self.spec))]
+		self.args = ['block_%i_arg_%i' % (self.compiler.rename_i, i) for i in xrange(len(self.cbtype.args))]
 		for i, arg in enumerate(self.args):
 			self.compiler.locals[arg] = self.cbtype.args[i]
 		self.compiler.rename_i += 1
@@ -1286,7 +1289,7 @@ class Compiler(object):
 				value = self.rstack.pop()
 				self.addeffect(('=', var, value))
 			elif len(token) > 1 and token[0] == '.':
-				if self.language == 'c++':
+				if self.language == 'c++' or '.' in token[1:]:
 					elem = self.ensure_stored(pop=True)
 				else:
 					elem = self.rstack.pop()
@@ -1331,7 +1334,9 @@ class Compiler(object):
 				for i, type in enumerate(self.words[token][0].values()):
 					arg = self.rstack.retrieve(i)
 					if isinstance(type, Callback):
-						assert isinstance(arg, Block)
+						if not isinstance(arg, Block):
+							arg = self.blockify(arg)
+							self.rstack.replace(i, arg)
 						arg.callback_type(type)
 				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1])
 				if self.wordtypes[token][1] == 'void':

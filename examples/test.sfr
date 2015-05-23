@@ -1,0 +1,52 @@
+:globals
+	@float =some-global-float
+	@vec2 =some-global-vec2
+;
+
+:struct TestStruct
+	@vec2 =a
+	@float =b
+	@vec3 =c
+;
+
+:extern some_js_func ( float vec2 -> float ) ;
+:extern some-vec3-func ( -> vec3 ) some_other_function ;
+
+: foo ( bar:float -> float )
+	bar 5 +
+;
+
+120 print =baz
+baz foo print =blah
+
+[ 1 2 ] print =temp
+temp 5 + print =temp2
+temp [ 5 6 ] + print =temp3
+
+temp3 .y print =temp4
+temp3 .yx print =temp3
+
+temp3 .x 2 ** print =temp5
+
+[ 2 vec2 3 [ 4 5 6 ] ] TestStruct =temp6
+
+temp6 .b.c =temp8 =temp7
+
+5 [ 6 7 ] some_js_func =temp9
+temp9 10 + =temp9
+
+some-vec3-func =temp10
+temp10 20 - =temp10
+
+"some string go\x3Ces here!\"foo
+\" \\ bar baz!" =temp11
+
+"foo" temp4 string + "bar" + =temp12
+
+:extern callmeback ( (float->float) ) ;
+: some-local-cb ( cb:(vec2*float->vec2) -> float )
+	[ 1 2 ] 3 *cb .x.y *
+;
+
+{ _ 5 + } callmeback
+&+ some-local-cb =temp13
