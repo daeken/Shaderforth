@@ -107,7 +107,7 @@ _language = 'glsl'
 
 class Type(object):
 	def __init__(self, name):
-		self.name = name
+		self.name = unicode(name)
 		self.attributes = []
 		self.array_count = None
 
@@ -194,7 +194,7 @@ class Block(object):
 		for i, arg in enumerate(self.args):
 			self.compiler.locals[arg] = self.cbtype.args[i]
 		self.compiler.rename_i += 1
-		for arg in self.args[::-1]:
+		for arg in self.args:
 			self.compiler.rstack.push(('var', arg))
 
 	def callback_type(self, type):
@@ -211,6 +211,7 @@ class Block(object):
 class Callback(object):
 	def __init__(self, args, ret):
 		self.args, self.ret = map(Type, args), Type(ret)
+		self.name = self # Hack hack hack hack hack.
 
 	def __repr__(self):
 		return 'Callback(%r, %r)' % (self.args, self.ret)
@@ -641,6 +642,8 @@ class Compiler(object):
 					return '[%s]' % (', '.join(structure(elem) for elem in atom[1:]))
 				else:
 					return '%s(%s)' % (atom[0], structure(atom[1]))
+			elif atom[0] == 'call':
+				return '%s(%s)' % (structure(atom[2]), ', '.join(map(structure, atom[3:])))
 			else:
 				if self.language == 'c++' and atom[0] in glfuncs:
 					prefix = 'sf_'
@@ -1229,7 +1232,10 @@ class Compiler(object):
 			self.argnames = self.wordtypes[name][2]
 			self.argtypes = dict((self.argnames[i], type) for i, type in enumerate(argtypes))
 			for name, type in self.argtypes.items():
-				self.locals[name] = Type(type)
+				if isinstance(type, Callback):
+					self.locals[name] = type
+				else:
+					self.locals[name] = Type(type)
 		else:
 			self.argnames = []
 
@@ -1255,8 +1261,18 @@ class Compiler(object):
 			elif len(token) > 1 and token[0] == '$' and token[1] != '[':
 				self.rstack.push(('var', token[1:]))
 			elif len(token) > 1 and token[0] == '*' and token != '**':
-				self.rstack.push(self.macrolocals[token[1:]])
-				self.call()
+				name = token[1:]
+				if name in self.macrolocals:
+					self.rstack.push(self.macrolocals[name])
+					self.call()
+				elif name in self.locals:
+					self.rstack.push(('var', name))
+					self.call(self.locals[name])
+				elif name in self.globals:
+					self.rstack.push(('var', name))
+					self.call(self.globals[name])
+				else:
+					assert False
 			elif len(token) > 4 and token[:2] == '##':
 				self.rgb(token[2:])
 			elif len(token) > 2 and token[:2] == '=>':
@@ -1312,6 +1328,11 @@ class Compiler(object):
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
+				for i, type in enumerate(self.words[token][0].values()):
+					arg = self.rstack.retrieve(i)
+					if isinstance(type, Callback):
+						assert isinstance(arg, Block)
+						arg.callback_type(type)
 				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1])
 				if self.wordtypes[token][1] == 'void':
 					self.addeffect(elem)
@@ -1584,7 +1605,9 @@ class Compiler(object):
 		if isinstance(expr, tuple) or isinstance(expr, list):
 			if hash(expr) in self.typetags:
 				return self.typetags[hash(expr)]
-			if expr[0] == 'var':
+			if expr[0] == 'call':
+				return unicode(expr[1].ret)
+			elif expr[0] == 'var':
 				name = expr[1]
 				if name in self.macrolocals and isinstance(self.macrolocals[name], list) and self.macrolocals[name][0] == 'var':
 					name = self.macrolocals[name][1]
@@ -1800,9 +1823,14 @@ class Compiler(object):
 		assign(arr, names)
 
 	@word('call')
-	def call(self):
+	def call(self, type=None):
 		name = self.rstack.pop()
-		
+		if isinstance(name, tuple):
+			assert isinstance(type, Callback)
+			args = tuple(self.rstack.pop() for i in xrange(len(type.args)))[::-1]
+			self.rstack.push(('call', type, name) + args)
+			return
+
 		block = self.blockify(name)
 		self.atoms.insert(block.atoms)
 
