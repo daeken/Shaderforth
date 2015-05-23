@@ -275,7 +275,7 @@ class Compiler(object):
 		self.rename_i = 0
 		self.is_static_frame = False
 		self.typetags = {}
-		self.words, self.wordtypes, self.macros, self.structs = self.parsewords(self.code)
+		self.words, self.wordtypes, self.macros, self.structs, self.externs = self.parsewords(self.code)
 		self.deps = {}
 		self.gdeps = {}
 		self.mainWords = {}
@@ -794,7 +794,7 @@ class Compiler(object):
 
 		parsed = Code(self.preprocess(parse(code)))
 		parseloc = 0
-		words, macros = {'main': []}, {}
+		words, macros, externs = {'main': []}, {}, {}
 		macrospec = {}
 		wordtypes = {'main' : ((), 'void', []), 'texture2D' : ((), 'vec4', [])}
 		globals = []
@@ -822,10 +822,14 @@ class Compiler(object):
 				cur.append(token)
 				continue
 
-			if token == ':':
+			if token == ':' or token == ':extern':
+				ttoken = token
 				modstack.append(cur)
 				name = parsed.consume()
-				cur = words[name] = []
+				if token == ':extern':
+					cur = externs[name] = []
+				else:
+					cur = words[name] = []
 
 				argstart = parsed.consume()
 				if argstart == '()':
@@ -851,7 +855,10 @@ class Compiler(object):
 					assert len([_ for _ in argnames if _ != None]) == 0 or None not in argnames
 					if None in argnames:
 						argnames = ['arg_%i' % i for i in xrange(len(argnames))]
-					wordtypes[name] = tuple(args), ret, argnames
+					if ttoken == ':extern':
+						externs[name] = args, ret
+					else:
+						wordtypes[name] = tuple(args), ret, argnames
 			elif token == ':m':
 				modstack.append(cur)
 				name = parsed.consume()
@@ -910,7 +917,7 @@ class Compiler(object):
 			word(name)(subword(name))
 			gltypes[name] = name
 
-		return words, wordtypes, macros, sdefs
+		return words, wordtypes, macros, sdefs, externs
 
 	def expandmacros(self, wname, tokens, macros):
 		def sub(atoms, deps):
@@ -1152,6 +1159,12 @@ class Compiler(object):
 			elif token in self.words:
 				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.wordtypes[token][0]))][::-1])
 				if self.wordtypes[token][1] == 'void':
+					self.addeffect(elem)
+				else:
+					self.rstack.push(elem)
+			elif token in self.externs:
+				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
+				if self.externs[token][1] == 'void':
 					self.addeffect(elem)
 				else:
 					self.rstack.push(elem)
