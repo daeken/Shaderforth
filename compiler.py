@@ -570,6 +570,8 @@ class Compiler(object):
 								break
 						assert elem_i is not None
 						return '%s[%i]' % (structure(atom[1]), elem_i)
+					elif self.infertype(atom[1]) == 'object':
+						return '%s.%s' % (paren(atom[1], '.'), atom[0][1:])
 					else:
 						val = paren(atom[1], '.')
 						if len(swizzle) > 2:
@@ -1345,7 +1347,8 @@ class Compiler(object):
 					self.rstack.push(elem)
 			elif token in self.externs:
 				for i, type in enumerate(self.externs[token][0]):
-					arg = self.rstack.retrieve(i)
+					arg_i = len(self.externs[token][0]) - i - 1
+					arg = self.rstack.retrieve(arg_i)
 					if isinstance(type, Callback):
 						assert isinstance(arg, Block)
 						arg.callback_type(type)
@@ -1514,18 +1517,27 @@ class Compiler(object):
 			if isinstance(self.macroglobals[name], tuple) and self.macroglobals[name][0] == 'var':
 				name = self.macroglobals[name][1]
 
+		swizzle = False
+		if name[0] == '.':
+			parent = self.rstack.pop()
+			elem = (name, parent, self.infertype(parent) in self.structs)
+			swizzle = True
+		else:
+			elem = ('var', name)
+
 		if isinstance(self.rstack.top(), Type):
 			type = self.rstack.pop()
-			self.locals[name] = type
-			if name not in self.localorder:
-				self.localorder.append(name)
-			self.addeffect(('=', ('var', name), None))
+			if not swizzle:
+				self.locals[name] = type
+				if name not in self.localorder:
+					self.localorder.append(name)
+			self.addeffect(('=', elem, None))
 		else:
-			elem = self.rstack.pop()
-			if name not in self.locals and name not in self.globals:
-				self.locals[name] = Type(self.infertype(elem))
+			value = self.rstack.pop()
+			if not swizzle and name not in self.locals and name not in self.globals:
+				self.locals[name] = Type(self.infertype(value))
 				self.localorder.append(name)
-			self.addeffect(('=', ('var', name), elem))
+			self.addeffect(('=', elem, value))
 
 	def map(self, name):
 		tlist = self.rstack.pop()
