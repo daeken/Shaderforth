@@ -53,10 +53,55 @@ def parse(code):
 		else:
 			return unicode(elem)
 
-	code = re.sub(r'/\*.*?\*/', '', code, flags=re.S)
-	code = map(sub, (elem for elem in code.replace('\n', ' ').replace('\t', ' ').split(' ') if elem != ''))
+	tokens = []
+	code += u' '
+	i = 0
+	whitespace = u' \r\n\t'
+	while i < len(code):
+		while i < len(code) and code[i] in whitespace:
+			i += 1
+		if i == len(code):
+			break
+		token = u''
+		if code[i] == '"':
+			i += 1
+			while True:
+				if code[i] == '\\':
+					i += 1
+					if code[i] == 'n':
+						token += '\n'
+						i += 1
+					elif code[i] == 'r':
+						token += '\r'
+						i += 1
+					elif code[i] == 't':
+						token += '\t'
+						i += 1
+					elif code[i] == '"':
+						token += '"'
+						i += 1
+					elif code[i] == '\\':
+						token += '\\'
+						i += 1
+					elif code[i] == 'x':
+						i += 1
+						token += chr(int(code[i:i+2], 16))
+						i += 2
+				elif code[i] == '"':
+					i += 1
+					break
+				else:
+					token += code[i]
+					i += 1
+			tokens.append('str-load')
+			tokens.append(token)
+		else:
+			while code[i] not in whitespace:
+				token += code[i]
+				i += 1
+			tokens.append(sub(token))
 
-	return code
+	return tokens
 
 _language = 'glsl'
 
@@ -518,6 +563,14 @@ class Compiler(object):
 					return 'console.log(%s)' % structure(atom[1])
 				else:
 					return ''
+			elif atom[0] == 'string':
+				assert self.language == 'js' # XXX: C++ support needs to be added.
+				# XXX: Need to always double quote, for C++
+				str = `atom[1]`
+				if str[0] == 'u':
+					return str[1:]
+				else:
+					return str
 			elif atom[0] == '?:':
 				c, a, b = atom[1:]
 				return '(%s ? %s : %s)' % (paren(c, '?:'), paren(a, '?:'), paren(b, '?:'))
@@ -2043,6 +2096,10 @@ class Compiler(object):
 	@word('static-frame')
 	def static_frame(self):
 		self.is_static_frame = True
+
+	@word('str-load', 1)
+	def str_load(self, str):
+		self.rstack.push(('string', str))
 
 def main():
 	import argparse
