@@ -444,7 +444,9 @@ class Compiler(object):
 							(atom[2][1] == atom[1])
 						):
 							other = structure([elem for elem in atom[2] if elem != atom[1]][1])
-							return '%s %s= %s' % (structure(atom[1]), atom[2][0], structure(other))
+							a, b = self.infertype(atom[1]), self.infertype(other)
+							if self.language != 'js' or (a == b and a in ('float', 'int')):
+								return '%s %s= %s' % (structure(atom[1]), atom[2][0], structure(other))
 					return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
@@ -533,7 +535,11 @@ class Compiler(object):
 					prefix = 'sf_'
 				else:
 					prefix = ''
-				return '%s%s(%s)' % (prefix, self.rename(atom[0]), ', '.join(map(structure, atom[1:])))
+				if atom[0] in self.externs:
+					name = self.externs[atom[0]][2]
+				else:
+					name = self.rename(atom[0])
+				return '%s%s(%s)' % (prefix, name, ', '.join(map(structure, atom[1:])))
 
 		if self.shadertoy:
 			self.emitnl('/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth')
@@ -856,7 +862,11 @@ class Compiler(object):
 					if None in argnames:
 						argnames = ['arg_%i' % i for i in xrange(len(argnames))]
 					if ttoken == ':extern':
-						externs[name] = args, ret
+						if parsed.peek() != ';':
+							repl = parsed.consume()
+						else:
+							repl = self.rename(name)
+						externs[name] = args, ret, repl
 					else:
 						wordtypes[name] = tuple(args), ret, argnames
 			elif token == ':m':
@@ -1465,6 +1475,8 @@ class Compiler(object):
 				return gltypes[expr[0]]
 			elif expr[0] in self.wordtypes:
 				return self.wordtypes[expr[0]][1]
+			elif expr[0] in self.externs:
+				return self.externs[expr[0]][1]
 			elif expr[0] == '[]':
 				return self.infertype(expr[1])
 			else:
