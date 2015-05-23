@@ -349,6 +349,7 @@ class Compiler(object):
 		self.words, self.wordtypes, self.macros, self.structs, self.externs = self.parsewords(self.code)
 		self.deps = {}
 		self.gdeps = {}
+		self.exports = []
 		self.mainWords = {}
 
 		if self.shadertoy:
@@ -385,6 +386,9 @@ class Compiler(object):
 		for i, ep in enumerate(eps):
 			if len(self.words[ep][1]) == 0:
 				del eps[i]
+
+		if len(eps) == 0 and len(self.exports) > 0:
+			eps.append(self.exports[0])
 
 		self.outcode = {}
 		for ep in eps:
@@ -649,6 +653,10 @@ class Compiler(object):
 					return '%s(%s)' % (atom[0], structure(atom[1]))
 			elif atom[0] == 'call':
 				return '%s(%s)' % (structure(atom[2]), ', '.join(map(structure, atom[3:])))
+			elif atom[0] == 'method-call':
+				assert atom[2] in self.externs
+				name = self.externs[atom[2]][2]
+				return '%s%s(%s)' % (paren(atom[1], '.'), name, ', '.join(map(structure, atom[3:])))
 			else:
 				if self.language == 'c++' and atom[0] in glfuncs:
 					prefix = 'sf_'
@@ -671,7 +679,11 @@ class Compiler(object):
 				self.emitnl('#define GMP')
 			self.emitnl('#include "Shaderforth.hpp"')
 
-		required = [main]
+		if main in self.exports:
+			main = '__placeholder__'
+			required = self.exports
+		else:
+			required = [main] + self.exports
 		checked = []
 		while len(checked) < len(required):
 			for dep in required:
@@ -1346,13 +1358,19 @@ class Compiler(object):
 				else:
 					self.rstack.push(elem)
 			elif token in self.externs:
+				obj = None
+				if self.externs[token][2][0] == '.':
+					obj = self.rstack.pop()
 				for i, type in enumerate(self.externs[token][0]):
 					arg_i = len(self.externs[token][0]) - i - 1
 					arg = self.rstack.retrieve(arg_i)
 					if isinstance(type, Callback):
 						assert isinstance(arg, Block)
 						arg.callback_type(type)
-				elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
+				if obj is not None:
+					elem = tuple(['method-call', obj, token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
+				else:
+					elem = tuple([token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
 				if self.externs[token][1] == 'void':
 					self.addeffect(elem)
 				else:
@@ -2264,6 +2282,12 @@ class Compiler(object):
 			assert self.rstack.pop() == '__callback__term__'
 		block.effects = self.effects
 		self.effects = effects
+
+	@word('export')
+	def export(self):
+		func = self.rstack.pop()
+		if func not in self.exports:
+			self.exports.append(func)
 
 def main():
 	import argparse
