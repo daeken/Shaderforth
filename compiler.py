@@ -448,19 +448,29 @@ class Compiler(object):
 					return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
-				if atom[2]:
+				if self.language != 'js' and atom[2]:
 					swizzle = '.' + self.rename(atom[0][1:])
 				elif self.language == 'c++':
 					swizzle = swizzle.replace('r', 'x').replace('g', 'y').replace('b', 'z').replace('a', 'w')
 				if not atom[2] and self.language == 'c++' and len(swizzle) > 2:
 					val = paren(atom[1], '.')
 					return 'vec%i(%s)' % (len(swizzle)-1, ', '.join('%s.%s' % (val, x) for x in swizzle[1:]))
-				elif not atom[2] and self.language == 'js':
-					val = paren(atom[1], '.')
-					if len(swizzle) > 2:
-						return '[%s]' % (', '.join('%s[%i]' % (val, letterElem[x]) for x in swizzle[1:]))
+				elif self.language == 'js':
+					if atom[2]:
+						struct = self.structs[self.infertype(atom[1])]
+						elem_i = None
+						for i, (ename, _) in enumerate(struct):
+							if ename == atom[0][1:]:
+								elem_i = i
+								break
+						assert elem_i is not None
+						return '%s[%i]' % (structure(atom[1]), elem_i)
 					else:
-						return '%s[%i]' % (val, letterElem[swizzle[1]])
+						val = paren(atom[1], '.')
+						if len(swizzle) > 2:
+							return '[%s]' % (', '.join('%s[%i]' % (val, letterElem[x]) for x in swizzle[1:]))
+						else:
+							return '%s[%i]' % (val, letterElem[swizzle[1]])
 				return '%s%s' % (paren(atom[1], '.'), swizzle)
 			elif atom[0] == 'var':
 				if atom[1].startswith('gl_') or atom[1] in self.globals or atom[1] in defd:
@@ -483,7 +493,8 @@ class Compiler(object):
 				defd.append(name)
 				name = self.rename(name)
 				indentlevel[0] += 1
-				return 'for(int %s = %s; %s < %s; ++%s) {' % (name, structure(start), name, structure(top), name), True
+				vtype = 'val' if self.language == 'js' else 'int'
+				return 'for(%s %s = %s; %s < %s; ++%s) {' % (vtype, name, structure(start), name, structure(top), name), True
 			elif atom[0] == 'if':
 				indentlevel[0] += 1
 				return 'if(%s) {' % structure(atom[1]), True
@@ -513,7 +524,10 @@ class Compiler(object):
 			elif atom[0] == 'carray':
 				return '{%s}' % (', '.join(structure(elem) for elem in atom[1:]))
 			elif self.language == 'js' and atom[0] in ('vec2', 'vec3', 'vec4'):
-				return '[%s]' % (', '.join(structure(elem) for elem in atom[1:]))
+				if len(atom) == int(atom[0][3]) + 1:
+					return '[%s]' % (', '.join(structure(elem) for elem in atom[1:]))
+				else:
+					return '%s(%s)' % (atom[0], structure(atom[1]))
 			else:
 				if self.language == 'c++' and atom[0] in glfuncs:
 					prefix = 'sf_'
@@ -544,7 +558,13 @@ class Compiler(object):
 				checked.append(dep)
 		dead = [name for name in self.words if name not in required]
 
-		if self.language != 'js':
+		if self.language == 'js':
+			for name, elems in self.structs.items():
+				args = ', '.join(self.rename(ename) for ename, type in elems)
+				self.emitnl('function %s(%s) {' % (self.rename(name), args))
+				self.emitnl('\treturn [%s];' % args)
+				self.emitnl('}')
+		else:
 			for name, elems in self.structs.items():
 				self.emitnl('struct %s {' % self.rename(name))
 				for ename, type in elems:

@@ -300,3 +300,13 @@ function vec4_neq_float(a, b) {
 function float_neq_vec4(a, b) {
 	return [a != b[0], a != b[1], a != b[2], a != b[3]];
 }
+
+function vec2(x) {
+	return [x, x];
+}
+function vec3(x) {
+	return [x, x, x];
+}
+function vec4(x) {
+	return [x, x, x, x];
+}
