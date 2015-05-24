@@ -362,8 +362,6 @@ class Compiler(object):
 			self.mainWords['mainImage'] = 'mainImage'
 
 		for name, atoms in (self.words.items() + self.macros.items()):
-			if name in self.words:
-				self.words[name] = self.compile(name, atoms)
 			self.deps[name] = deps = []
 			for atom in atoms:
 				if not isinstance(atom, unicode):
@@ -380,6 +378,18 @@ class Compiler(object):
 					if atom[1:] not in self.gdeps:
 						self.gdeps[atom[1:]] = []
 					self.gdeps[atom[1:]].append(name)
+		remaining = list(self.words.keys())
+		order = []
+		while len(remaining):
+			rep = []
+			for elem in remaining:
+				if False in [dep in order or dep in self.macros for dep in self.deps[elem]]:
+					rep.append(elem)
+				else:
+					order.append(elem)
+			remaining = rep
+		for name in order:
+			self.words[name] = self.compile(name, self.words[name])
 		
 		self.passes, eps = self.parsepasses()
 		eps.append('mainImage' if shadertoy else 'main')
@@ -512,6 +522,8 @@ class Compiler(object):
 					return 'false'
 				elif isinstance(atom, float):
 					return format_float(atom)
+				elif isinstance(atom, unicode):
+					return self.rename(atom)
 				return unicode(atom)
 
 			if atom[0] == '**' and self.language != 'js':
@@ -749,6 +761,8 @@ class Compiler(object):
 			defd = self.wordtypes[name][2]
 			effects = self.predeclare(effects, argnames)
 
+			Compiler.compiling = name
+
 			if name == main:
 				if name in self.mainWords:
 					pname = self.mainWords[name]
@@ -771,7 +785,7 @@ class Compiler(object):
 
 	def addeffect(self, effect):
 		def tag_and_blockify(elem):
-			self.typetags[hash(elem)] = self.infertype(elem)
+			self.typetags[hash((Compiler.compiling, elem))] = self.infertype(elem)
 			if isinstance(elem, tuple):
 				return tuple(map(tag_and_blockify, elem))
 			elif isinstance(elem, list):
@@ -1351,7 +1365,9 @@ class Compiler(object):
 			elif token in self.words:
 				for i, type in enumerate(self.words[token][0].values()):
 					arg = self.rstack.retrieve(i)
-					if isinstance(type, Callback):
+					if arg in self.words:
+						pass
+					elif isinstance(type, Callback):
 						if not isinstance(arg, Block):
 							arg = self.blockify(arg)
 							self.rstack.replace(i, arg)
@@ -1368,8 +1384,12 @@ class Compiler(object):
 				for i, type in enumerate(self.externs[token][0]):
 					arg_i = len(self.externs[token][0]) - i - 1
 					arg = self.rstack.retrieve(arg_i)
-					if isinstance(type, Callback):
-						assert isinstance(arg, Block)
+					if arg in self.words:
+						pass
+					elif isinstance(type, Callback):
+						if not isinstance(arg, Block):
+							arg = self.blockify(arg)
+							self.rstack.replace(arg_i, arg)
 						arg.callback_type(type)
 				if obj is not None:
 					elem = tuple(['method-call', obj, token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
@@ -1642,8 +1662,8 @@ class Compiler(object):
 
 	def infertype(self, expr):
 		if isinstance(expr, tuple) or isinstance(expr, list):
-			if hash(expr) in self.typetags:
-				return self.typetags[hash(expr)]
+			if hash((Compiler.compiling, expr)) in self.typetags:
+				return self.typetags[hash((Compiler.compiling, expr))]
 			if expr[0] == 'call':
 				return unicode(expr[1].ret)
 			elif expr[0] == 'var':
@@ -1651,13 +1671,21 @@ class Compiler(object):
 				if name in self.macrolocals and isinstance(self.macrolocals[name], list) and self.macrolocals[name][0] == 'var':
 					name = self.macrolocals[name][1]
 				if name in self.globals:
-					return self.globals[name].name
+					obj = self.globals[name].name
 				elif name in self.locals:
-					return self.locals[name].name
+					obj = self.locals[name].name
 				else:
 					assert False
+				if isinstance(obj, Callback):
+					return obj.ret.name
+				else:
+					return obj
 			elif expr[0] == 'arg':
-				return self.argtypes[expr[1]]
+				obj = self.argtypes[expr[1]]
+				if isinstance(obj, Callback):
+					return obj.ret.name
+				else:
+					return obj
 			elif expr[0][0] == '.':
 				subtype = self.infertype(expr[1])
 				if subtype in self.structs:
