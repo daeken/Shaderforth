@@ -398,3 +398,28 @@ function mod_vec4_float(x, y) {
 		mod_float_float(x[3], y)
 	];
 }
+
+function sin_float(x) {
+	return Math.sin(x);
+}
+function sin_vec2(x) {
+	return [
+		Math.sin(x[0]), 
+		Math.sin(x[1])
+	];
+}
+function sin_vec3(x) {
+	return [
+		Math.sin(x[0]), 
+		Math.sin(x[1]), 
+		Math.sin(x[2])
+	];
+}
+function sin_vec4(x) {
+	return [
+		Math.sin(x[0]), 
+		Math.sin(x[1]), 
+		Math.sin(x[2]), 
+		Math.sin(x[3])
+	];
+}
