@@ -1777,6 +1777,9 @@ class Compiler(object):
 	@word('uniform')
 	def uniform(self):
 		self.rstack.top().attribute('uniform')
+	@word('attribute')
+	def attribute(self):
+		self.rstack.top().attribute('attribute')
 
 	@word('(')
 	def nullparen_open(self):
