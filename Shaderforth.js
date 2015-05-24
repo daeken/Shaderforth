@@ -310,3 +310,91 @@ function vec3(x) {
 function vec4(x) {
 	return [x, x, x, x];
 }
+
+function abs_float(x) {
+	return Math.abs(x);
+}
+function abs_vec2(x) {
+	return [
+		Math.abs(x[0]), 
+		Math.abs(x[1])
+	];
+}
+function abs_vec3(x) {
+	return [
+		Math.abs(x[0]), 
+		Math.abs(x[1]), 
+		Math.abs(x[2])
+	];
+}
+function abs_vec4(x) {
+	return [
+		Math.abs(x[0]), 
+		Math.abs(x[1]), 
+		Math.abs(x[2]), 
+		Math.abs(x[3])
+	];
+}
+
+function clamp_float_float_float(x, minVal, maxVal) {
+	return Math.min(Math.max(x, minVal), maxVal);
+}
+function clamp_vec2_float_float(x, minVal, maxVal) {
+	return [
+		clamp_float_float_float(x[0], minVal, maxVal), 
+		clamp_float_float_float(x[1], minVal, maxVal)
+	];
+}
+function clamp_vec3_float_float(x, minVal, maxVal) {
+	return [
+		clamp_float_float_float(x[0], minVal, maxVal), 
+		clamp_float_float_float(x[1], minVal, maxVal), 
+		clamp_float_float_float(x[2], minVal, maxVal)
+	];
+}
+function clamp_vec4_float_float(x, minVal, maxVal) {
+	return [
+		clamp_float_float_float(x[0], minVal, maxVal), 
+		clamp_float_float_float(x[1], minVal, maxVal), 
+		clamp_float_float_float(x[2], minVal, maxVal), 
+		clamp_float_float_float(x[3], minVal, maxVal)
+	];
+}
+
+function mix_float_float_float(x, y, a) {
+	return x * (1 - a) + y * a;
+}
+function mix_vec2_vec2_float(x, y, a) {
+	return vec2_add_vec2(vec2_mul_float(x, 1-a), vec2_mul_float(y, a));
+}
+function mix_vec3_vec3_float(x, y, a) {
+	return vec3_add_vec3(vec3_mul_float(x, 1-a), vec3_mul_float(y, a));
+}
+function mix_vec4_vec4_float(x, y, a) {
+	return vec3_add_vec4(vec4_mul_float(x, 1-a), vec4_mul_float(y, a));
+}
+
+function mod_float_float(x, y) {
+	return x - y * Math.floor(x / y);
+}
+function mod_vec2_float(x, y) {
+	return [
+		mod_float_float(x[0], y), 
+		mod_float_float(x[1], y)
+	];
+}
+function mod_vec3_float(x, y) {
+	return [
+		mod_float_float(x[0], y), 
+		mod_float_float(x[1], y), 
+		mod_float_float(x[2], y)
+	];
+}
+function mod_vec4_float(x, y) {
+	return [
+		mod_float_float(x[0], y), 
+		mod_float_float(x[1], y), 
+		mod_float_float(x[2], y), 
+		mod_float_float(x[3], y)
+	];
+}

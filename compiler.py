@@ -658,7 +658,7 @@ class Compiler(object):
 				name = self.externs[atom[2]][2]
 				return '%s%s(%s)' % (paren(atom[1], '.'), name, ', '.join(map(structure, atom[3:])))
 			else:
-				if self.language == 'c++' and atom[0] in glfuncs:
+				if self.language in 'c++' and atom[0] in glfuncs:
 					prefix = 'sf_'
 				else:
 					prefix = ''
@@ -666,7 +666,11 @@ class Compiler(object):
 					name = self.externs[atom[0]][2]
 				else:
 					name = self.rename(atom[0])
-				return '%s%s(%s)' % (prefix, name, ', '.join(map(structure, atom[1:])))
+				if self.language == 'js' and atom[0] in glfuncs:
+					suffix = ''.join('_%s' % self.infertype(arg) for arg in atom[1:])
+				else:
+					suffix = ''
+				return '%s%s%s(%s)' % (prefix, name, suffix, ', '.join(map(structure, atom[1:])))
 
 		if self.shadertoy:
 			self.emitnl('/* Compiled with Shaderforth: https://github.com/daeken/Shaderforth')
@@ -680,7 +684,7 @@ class Compiler(object):
 			self.emitnl('#include "Shaderforth.hpp"')
 
 		if main in self.exports:
-			main = '__placeholder__'
+			main = '__placeholder__' # Necessary to stop name rewriting from triggering
 			required = self.exports
 		else:
 			required = [main] + self.exports
@@ -2269,7 +2273,7 @@ class Compiler(object):
 	@word('__start_callback', 1)
 	def start_callback(self, block):
 		prev_effects = self.effects
-		self.effects = []
+		self.effects = list()
 		self.rstack.push('__callback__term__')
 		block.callback()
 		self.atoms.insert(block.atoms + ['__end_callback', block, prev_effects])
@@ -2280,7 +2284,7 @@ class Compiler(object):
 		if retval != '__callback__term__':
 			self.addeffect(('return', retval))
 			assert self.rstack.pop() == '__callback__term__'
-		block.effects = self.effects
+		block.effects = self.vectorize(self.effects)
 		self.effects = effects
 
 	@word('export')
