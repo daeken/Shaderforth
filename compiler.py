@@ -523,6 +523,8 @@ class Compiler(object):
 				elif isinstance(atom, float):
 					return format_float(atom)
 				elif isinstance(atom, unicode):
+					if atom in self.externs:
+						return self.externs[atom][2]
 					return self.rename(atom)
 				return unicode(atom)
 
@@ -1019,11 +1021,10 @@ class Compiler(object):
 				else:
 					cur = words[name] = []
 
-				argstart = parsed.consume()
-				if argstart == '()':
+				if parsed.peek() != '(':
 					wordtypes[name] = (), 'void', []
 				else:
-					assert argstart == '('
+					parsed.consume()
 					args = []
 					argnames = []
 					ret = 'void'
@@ -1365,7 +1366,7 @@ class Compiler(object):
 			elif token in self.words:
 				for i, type in enumerate(self.words[token][0].values()):
 					arg = self.rstack.retrieve(i)
-					if arg in self.words:
+					if arg in self.words or arg in self.externs:
 						pass
 					elif isinstance(type, Callback):
 						if not isinstance(arg, Block):
@@ -1384,12 +1385,12 @@ class Compiler(object):
 				for i, type in enumerate(self.externs[token][0]):
 					arg_i = len(self.externs[token][0]) - i - 1
 					arg = self.rstack.retrieve(arg_i)
-					if arg in self.words:
+					if arg in self.words or arg in self.externs:
 						pass
 					elif isinstance(type, Callback):
 						if not isinstance(arg, Block):
 							arg = self.blockify(arg)
-							self.rstack.replace(arg_i, arg)
+							self.rstack.replace(i, arg)
 						arg.callback_type(type)
 				if obj is not None:
 					elem = tuple(['method-call', obj, token] + [self.rstack.pop() for i in xrange(len(self.externs[token][0]))][::-1])
