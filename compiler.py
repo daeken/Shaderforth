@@ -318,7 +318,7 @@ else:
 letterElem = dict(x=0, y=1, z=2, w=3, r=0, g=1, b=2, a=3)
 
 class Compiler(object):
-	def __init__(self, code, utility, language=False, shadertoy=False, minimize=False):
+	def __init__(self, code, utility, language='glsl', shadertoy=False, minimize=False, entry_point=None):
 		global _language
 		self.barecode = code
 		self.code = utility + code
@@ -331,6 +331,7 @@ class Compiler(object):
 		if self.language == 'c++-gmp':
 			self.language, self.gmp = 'c++', True
 		_language = self.language
+		self.entry_point = entry_point
 		self.resetprecision()
 		self.shadertoy = shadertoy
 		self.minimize = minimize
@@ -393,6 +394,8 @@ class Compiler(object):
 		
 		self.passes, eps = self.parsepasses()
 		eps.append('mainImage' if shadertoy else 'main')
+		if self.entry_point is not None:
+			eps = [self.entry_point]
 		for i, ep in enumerate(eps):
 			if len(self.words[ep][1]) == 0:
 				del eps[i]
@@ -805,7 +808,7 @@ class Compiler(object):
 			if not isinstance(effect, tuple) and not isinstance(effect, list):
 				return list()
 			if effect[0] == 'var':
-				return list(effect[1])
+				return list([effect[1]])
 			return reduce(lambda a, b: a + b, map(vars_referenced, effect))
 
 		declared = list(self.globals.keys())
@@ -1364,8 +1367,9 @@ class Compiler(object):
 			elif token in self.globals or token in self.locals:
 				self.rstack.push(('var', token))
 			elif token in self.words:
-				for i, type in enumerate(self.words[token][0].values()):
-					arg = self.rstack.retrieve(i)
+				for i, type in enumerate(self.wordtypes[token][0]):
+					arg_i = len(self.wordtypes[token][0]) - i - 1
+					arg = self.rstack.retrieve(arg_i)
 					if arg in self.words or arg in self.externs:
 						pass
 					elif isinstance(type, Callback):
