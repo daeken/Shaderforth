@@ -570,7 +570,7 @@ class Compiler(object):
 							other = structure([elem for elem in atom[2] if elem != atom[1]][1])
 							a, b = self.infertype(atom[1]), self.infertype(other)
 							if self.language != 'js' or (a == b and a in ('float', 'int')):
-								return '%s %s= %s' % (structure(atom[1]), atom[2][0], structure(other))
+								return '%s %s= %s' % (structure(atom[1]), atom[2][0], other)
 					return '%s = %s' % (structure(atom[1]), structure(atom[2]))
 			elif atom[0][0] == '.':
 				swizzle = atom[0]
