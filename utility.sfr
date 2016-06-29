@@ -36,6 +36,9 @@
 : smin-exp ( a:float b:float k:float -> float )
     k neg a * exp k neg b * exp + log neg k /
 ;
+: smax-exp ( a:float b:float k:float -> float )
+	a k * exp b k * exp + log k /
+;
 
 :m geq ( a x )
 	a x step
@@ -45,14 +48,14 @@
 ;
 
 ( Maths )
-: closest-point-line ( a:vec2 b:vec2 point:vec2 -> vec2 )
-	point a - =>pa
+: closest-point-line ( a:vec2 b:vec2 p:vec2 -> vec2 )
+	p a - =>pa
 	b a - =>ba
 	pa ba dot ba ba dot / 0 1 clamp =h
 	ba h * a +
 ;
-: point-distance-line ( a:vec2 b:vec2 point:vec2 -> float )
-	point a b point closest-point-line - length
+: point-distance-line ( a:vec2 b:vec2 p:vec2 -> float )
+	p a b p closest-point-line - length
 ;
 :m deg->rad pi 180 / * ;
 :m rad->deg pi 180 / / ;
@@ -91,7 +94,7 @@
 		p h + *f  p h - *f -
 		p h .yx + *f  p h .yx - *f -
 	] 2 / h .x / length =>g
-	v g abs /
+	v abs g /
 ;
 :m gradient-vec ( df vf p )
 	[ eps 0 ] =h
@@ -143,3 +146,7 @@
 ( Image Operations )
 :m blur-range $[-.05:+.05:.01] ?{ 0 != } ;
 :m blur ( f ) blur-range multi2 /f \+ blur-range size sq / ;
+
+( Animation Helpers )
+:m ease-in-quad 2 ** ;
+:m ease-out-quad 1 1 _ - 2 ** - ;

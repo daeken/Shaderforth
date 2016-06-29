@@ -120,8 +120,8 @@ class Type(object):
 	def __repr__(self):
 		return ' '.join(self.attributes) + (' ' if self.attributes else '') + self.name + ('' if self.array_count is None else '[%i]' % self.array_count)
 
-	def rename(self):
-		body = Compiler.instance.rename(self.name) + ('' if self.array_count is None else '[%i]' % self.array_count)
+	def rename(self, tl=False):
+		body = Compiler.instance.rename(self.name) + ('' if self.array_count is None or tl else '[%i]' % self.array_count)
 		if _language == 'c++':
 			return body
 		return ' '.join(self.attributes) + (' ' if self.attributes else '') + body
@@ -251,6 +251,7 @@ foldops = {
 	'>=' : lambda a, b: a >= b,
 	'<=' : lambda a, b: a <= b,
 	'clamp' : None, 
+	'sign' : None, 
 	'min' : lambda a, b: min(a, b), 
 	'max' : lambda a, b: max(a, b), 
 	'mod' : lambda a, b: a % b, 
@@ -281,6 +282,7 @@ glfuncs = dict(
 	refract=3, 
 	int=1, 
 	clamp=3,
+	step=2, 
 	smoothstep=3, 
 	ceil=1, 
 	floor=1, 
@@ -292,6 +294,9 @@ glfuncs = dict(
 	vec2=1, 
 	vec3=1, 
 	vec4=1, 
+	dFdx=1, 
+	dFdy=1, 
+	fwidth=1, 
 )
 gltypes = dict(
 	dot='float', 
@@ -312,6 +317,8 @@ for name, consumes in glfuncs.items():
 
 if '/' in __file__:
 	compiler_root = __file__.rsplit('/', 1)[0]
+elif '\\' in __file__:
+	compiler_root = __file__.rsplit('\\', 1)[0]
 else:
 	compiler_root = './'
 
@@ -322,7 +329,7 @@ class Compiler(object):
 		global _language
 		self.barecode = code
 		self.code = utility + code
-		self.imports = []
+		Compiler.imports = []
 		self.loaded_modules = []
 		self.blockstack = []
 		self.tempi = 0
@@ -668,6 +675,11 @@ class Compiler(object):
 					return '[%s]' % (', '.join(structure(elem) for elem in atom[1:]))
 				else:
 					return '%s(%s)' % (atom[0], structure(atom[1]))
+			elif self.language == 'glsl' and atom[0] in ('vec2', 'vec3', 'vec4'):
+				first = atom[1]
+				if False not in [x == first for x in atom[2:]]:
+					return '%s(%s)' % tuple(map(structure, atom[:2]))
+				return '%s(%s)' % (structure(atom[0]), ', '.join(map(structure, atom[1:])))
 			elif atom[0] == 'call':
 				return '%s(%s)' % (structure(atom[2]), ', '.join(map(structure, atom[3:])))
 			elif atom[0] == 'method-call':
@@ -744,7 +756,7 @@ class Compiler(object):
 			if self.language == 'js':
 				self.emitnl('var', self.rename(name) + ';')
 			else:
-				self.emitnl(type.rename(), self.rename(name) + ';')
+				self.emitnl(type.rename(tl=True), self.rename(name, type) + ';')
 
 		deps = depcopy(self.deps)
 		wordorder = []
@@ -766,7 +778,7 @@ class Compiler(object):
 			defd = self.wordtypes[name][2]
 			effects = self.predeclare(effects, argnames)
 
-			Compiler.compiling = name
+			Compiler.compiling = [name]
 
 			if name == main:
 				if name in self.mainWords:
@@ -790,7 +802,7 @@ class Compiler(object):
 
 	def addeffect(self, effect):
 		def tag_and_blockify(elem):
-			self.typetags[hash((Compiler.compiling, elem))] = self.infertype(elem)
+			self.typetags[hash((Compiler.compiling[0], elem))] = self.infertype(elem)
 			if isinstance(elem, tuple):
 				return tuple(map(tag_and_blockify, elem))
 			elif isinstance(elem, list):
@@ -800,6 +812,8 @@ class Compiler(object):
 				return elem
 			else:
 				return elem
+		if effect[0] == '=' and effect[1] == effect[2]:
+			return
 		effect = tag_and_blockify(effect)
 		self.effects.append(effect)
 
@@ -831,14 +845,16 @@ class Compiler(object):
 			for ref in refs:
 				if ref in inside and ref not in need:
 					need.append(ref)
-		return list(('=', ('var', var), None) for var in need if not var.startswith('gl_') and var not in decls[0]) + effects
-
-	def rename(self, name):
+		return list(('=', ('var', var), None) for var in need if var not in declared and var not in decls[0]) + effects
+	
+	def rename(self, name, type=None):
 		if name in glfuncs or name in btypes or name.startswith('gl_'):
 			if name == 'atan2':
 				return 'atan'
 			return name
 		elif name in self.globals and ('uniform' in self.globals[name].attributes or 'varying' in self.globals[name].attributes):
+			if type is not None and type.array_count is not None:
+				return name + '[%i]' % type.array_count
 			return name
 		elif name in self.renamed:
 			return self.renamed[name]
@@ -881,11 +897,11 @@ class Compiler(object):
 					try:
 						tfp = compiler_root + '/modules/' + fp + '.sfr'
 						subcode = file(str(tfp)).read()
-						self.imports.append(tfp)
+						Compiler.imports.append(tfp)
 					except:
 						try:
 							subcode = file(fp + '.sfr').read()
-							self.imports.append(fp + '.sfr')
+							Compiler.imports.append(fp + '.sfr')
 						except:
 							print >>sys.stderr, 'Failed to load import:', `fp`
 							subcode = ''
@@ -949,6 +965,7 @@ class Compiler(object):
 					all_names = []
 					specstack = [spec]
 					stored = []
+					in_ret = False
 					for i, atom in enumerate(mspec):
 						if atom == ')':
 							break
@@ -957,7 +974,11 @@ class Compiler(object):
 							specstack[-2].append(specstack[-1])
 						elif atom == ']':
 							specstack.pop()
-						else:
+						elif atom == '->':
+							in_ret = True
+						elif not in_ret:
+							if ':' in atom:
+								atom = atom.split(':', 1)[0]
 							if atom.startswith('$'):
 								stored.append(atom[1:])
 								atom = atom[1:]
@@ -1059,7 +1080,7 @@ class Compiler(object):
 			elif token == ':m':
 				modstack.append(cur)
 				name = parsed.consume()
-				cur = macros[name] = []
+				cur = macros[name] = ['__push_macro', 'macro:' + name]
 				macrospec[name] = []
 				in_macro = name
 				cdepth = 0
@@ -1087,6 +1108,7 @@ class Compiler(object):
 				cur = structs[name] = []
 			elif token == ';':
 				if in_macro:
+					cur.append('__pop_macro')
 					sanitize(in_macro, cur)
 					in_macro = None
 				cur = modstack.pop()
@@ -1181,26 +1203,45 @@ class Compiler(object):
 					return tuple([op, a, b])
 			else:
 				return foldops[op](a, b)
+		def unvec(x):
+			if isinstance(x, tuple) and x[0].startswith(u'vec'):
+				if eligible(x[1]):
+					return x[1]
+			elif isinstance(x, list) and x[0] == 'array':
+				first = x[1]
+				if False not in [y == first for y in x[2:]]:
+					return first
+			return x
+
+		def retype(x, type):
+			if self.infertype(x) != type:
+				return (type, x)
+			else:
+				return x
 
 		if foldops[op] and False not in map(eligible, operands):
 			return reduce(fold, operands)
 
 		if op == '*':
+			type = self.infertype(tuple([op] + operands))
+			operands = map(unvec, operands)
 			if 0 in operands:
-				return float(0)
+				return retype(float(0), type)
 			elif 1 in operands:
 				operands = [val for val in operands if val != 1]
 				if len(operands) == 0:
-					return float(1)
+					return retype(float(1), type)
 				elif len(operands) == 1:
-					return operands[0]
+					return retype(operands[0], type)
 		elif op == '/':
+			type = self.infertype(tuple([op] + operands))
+			operands = map(unvec, operands)
 			while len(operands) and operands[-1] == 1:
 				operands = operands[:-1]
 			if len(operands) == 0:
-				return float(0)
+				return retype(float(0), type)
 			elif len(operands) == 1:
-				return operands[0]
+				return retype(operands[0], type)
 		elif op == '**':
 			assert len(operands) == 2
 			if operands[0] == 0:
@@ -1210,24 +1251,35 @@ class Compiler(object):
 			elif operands[1] == 1:
 				return operands[0]
 		elif op == '+':
+			type = self.infertype(tuple([op] + operands))
+			operands = map(unvec, operands)
 			operands = [val for val in operands if val != 0]
 			if len(operands) == 0:
-				return float(0)
+				return retype(float(0), type)
 			elif len(operands) == 1:
-				return operands[0]
+				return retype(operands[0], type)
 		elif op == '-':
+			type = self.infertype(tuple([op] + operands))
+			operands = map(unvec, operands)
 			while len(operands) and operands[-1] == 0:
 				operands = operands[:-1]
 			if len(operands) == 0:
-				return float(0)
+				return retype(float(0), type)
 			elif len(operands) == 1:
-				return operands[0]
+				return retype(operands[0], type)
 		elif op == 'clamp' and False not in map(eligible, operands):
 			val, a, b = operands
 			if isinstance(val, list):
 				return list(['array'] + [min(max(elem, a), b) for elem in val[1:]])
 			else:
 				return min(max(val, a), b)
+		elif op == 'sign' and False not in map(eligible, operands):
+			sign = lambda x: (0 if x == 0 else -1) if x <= 0 else 1
+			val, = operands
+			if isinstance(val, list):
+				return list(['array'] + [sign for elem in val[1:]])
+			else:
+				return sign(val)
 
 		return tuple([op] + operands)
 
@@ -1256,7 +1308,7 @@ class Compiler(object):
 				self.rstack.push(('.' + swizzle, elem, False))
 
 	def compile(self, name, atoms, pre=False):
-		Compiler.compiling = name
+		Compiler.compiling = [name]
 		self.atoms = Code(atoms)
 		self.rstack = Stack()
 		self.sstack = Stack()
@@ -1296,7 +1348,7 @@ class Compiler(object):
 			elif len(token) > 1 and token[0] == '@':
 				self.rstack.push(Type(token[1:]))
 			elif len(token) > 1 and token[0] == '&':
-				self.rstack.push(token[1:])
+				self.atoms.insert(self.expandmacros(None, ['{', token[1:], '}'], self.macros))
 			elif len(token) > 1 and token[0] == '$' and token[1] != '[':
 				self.rstack.push(('var', token[1:]))
 			elif len(token) > 1 and token[0] == '*' and token != '**':
@@ -1667,8 +1719,8 @@ class Compiler(object):
 
 	def infertype(self, expr):
 		if isinstance(expr, tuple) or isinstance(expr, list):
-			if hash((Compiler.compiling, expr)) in self.typetags:
-				return self.typetags[hash((Compiler.compiling, expr))]
+			if hash((Compiler.compiling[0], expr)) in self.typetags:
+				return self.typetags[hash((Compiler.compiling[0], expr))]
 			if expr[0] == 'call':
 				return unicode(expr[1].ret)
 			elif expr[0] == 'var':
@@ -1769,6 +1821,10 @@ class Compiler(object):
 				self.rstack.push(temp)
 			return temp
 
+	@word('store')
+	def store(self):
+		self.ensure_stored()
+
 	@word('dup')
 	def dup(self):
 		self.rstack.push(self.ensure_stored())
@@ -1847,11 +1903,11 @@ class Compiler(object):
 		tlist = self.rstack.pop()
 		assert tlist[0] == 'array'
 		tlist = tlist[1:]
-		if len(tlist) == 4:
+		if len(tlist) in (2, 4):
 			size = 2
-		elif len(tlist) == 9:
+		elif len(tlist) in (3, 9):
 			size = 3
-		elif len(tlist) == 16:
+		elif len(tlist) in (4, 16):
 			size = 4
 		else:
 			assert False
@@ -1958,8 +2014,9 @@ class Compiler(object):
 			if isinstance(cond, list):
 				assert [elem in (True, False) for elem in cond[1:]]
 				return False not in map(all_true, cond[1:])
-			assert cond in (True, False)
-			return cond
+			if cond in (True, False):
+				return cond
+			return True
 		block = self.blockify(name)
 		cond = self.rstack.pop()
 		if all_true(cond):
@@ -1971,8 +2028,9 @@ class Compiler(object):
 			if isinstance(cond, list):
 				assert [elem in (True, False) for elem in cond[1:]]
 				return False not in map(all_true, cond[1:])
-			assert cond in (True, False)
-			return cond
+			if cond in (True, False):
+				return cond
+			return True
 		cond = self.rstack.pop()
 		else_ = self.blockify(self.rstack.pop())
 		if_ = self.blockify(self.rstack.pop())
@@ -2051,6 +2109,10 @@ class Compiler(object):
 	@word('printdbg')
 	def printdbg(self):
 		pprint.pprint(self.rstack.top())
+
+	@word('printstack')
+	def printstack(self):
+		pprint.pprint(self.rstack.list)
 
 	@word('print')
 	def print_(self):
@@ -2208,6 +2270,8 @@ class Compiler(object):
 		val = self.rstack.pop()
 		if isinstance(val, float) or isinstance(val, int):
 			self.rstack.push(float(val))
+		elif self.infertype(val) == 'float':
+			self.rstack.push(val)
 		else:
 			self.rstack.push(('float', val))
 
@@ -2216,6 +2280,8 @@ class Compiler(object):
 		val = self.rstack.pop()
 		if isinstance(val, float) or isinstance(val, int):
 			self.rstack.push(int(val))
+		elif self.infertype(val) == 'int':
+			self.rstack.push(val)
 		else:
 			self.rstack.push(('int', val))
 
@@ -2271,9 +2337,9 @@ class Compiler(object):
 		elems = map(float, elems)
 		val = list(['array'])
 		if len(elems) == 1:
-			start, max, step = 0., elems[0], 1.
+			start, max, step = 0., elems[0], float(1.)
 		elif len(elems) == 2:
-			(start, max), step = elems, 1.
+			(start, max), step = elems, float(1.)
 		else:
 			start, max, step = elems
 
@@ -2329,8 +2395,17 @@ class Compiler(object):
 		if func not in self.exports:
 			self.exports.append(func)
 
+	@word('__push_macro', 1)
+	def __push_macro(self, name):
+		print '-->', name
+		Compiler.compiling.append(name)
+
+	@word('__pop_macro')
+	def __pop_macro(self):
+		print '<--', Compiler.compiling.pop()
+
 def main():
-	import argparse
+	import argparse, os
 
 	parser = argparse.ArgumentParser(description='Shaderforth compiler')
 	parser.add_argument('filename', metavar='filename.sfr', type=unicode,
@@ -2343,7 +2418,7 @@ def main():
 						help='language output')
 
 	args = parser.parse_args()
-	utility = file('utility.sfr', 'r').read().decode('utf-8')
+	utility = file(os.path.dirname(os.path.realpath(__file__)) + '/utility.sfr', 'r').read().decode('utf-8')
 	compiler = Compiler(
 		file(args.filename, 'r').read().decode('utf-8'), 
 		utility, 

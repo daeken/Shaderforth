@@ -1,0 +1,29 @@
+:m qangle ( axis angle )
+	[
+		axis angle 2 / sin *
+		angle 2 / cos
+	]
+;
+
+:m qconjugate ( a )
+	[
+		a .xyz neg a .w
+	]
+;
+
+:m qnormalize
+	normalize
+;
+
+: q* ( a:vec4 b:vec4 -> vec4 )
+	[
+		a .w b .x * a .x b .w * + a .y b .z * + a .z b .y * -
+		a .w b .y * a .y b .w * + a .z b .x * + a .x b .z * -
+		a .w b .z * a .z b .w * + a .x b .y * + a .y b .x * -
+		a .w b .w * a .x b .x * + a .y b .y * + a .z b .z * -
+	]
+;
+
+: qrotate ( a:vec4 b:vec3 -> vec3 )
+	a [ b 0 ] qnormalize a qconjugate q* q* .xyz
+;

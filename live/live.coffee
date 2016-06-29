@@ -19,6 +19,9 @@ render_once = false
 last_time = 0
 is_static_frame = false
 was_static = false
+frames = 0
+render_time = 0
+last_frame = 0
 
 $(document).ready () ->
 	cvs = $('#cvs')[0]
@@ -26,6 +29,7 @@ $(document).ready () ->
 	cvs.height = cvs.style['height'] = viewdimensions[1]
 	ctx = cvs.getContext('webgl', {preserveDrawingBuffer: true})
 	ctx.getExtension('OES_texture_float')
+	ctx.getExtension('OES_standard_derivatives')
 
 	$('#cvs').mousemove (evt) ->
 		parentOffset = $(this).parent().offset()
@@ -59,6 +63,7 @@ $(document).ready () ->
 			else
 				paused_at += (new Date) - start
 			start = new Date
+			last_frame = 0
 		else
 			start = new Date
 
@@ -69,6 +74,9 @@ $(document).ready () ->
 		last_time = 0
 		reversed = false
 		render_once = true
+		frames = 0
+		render_time = 0
+		last_frame = 0
 
 	$('#reverse').click () ->
 		reversed = !reversed
@@ -126,7 +134,7 @@ class Renderer
 			return
 		ctx.attachShader(p, v)
 		f = ctx.createShader(ctx.FRAGMENT_SHADER)
-		ctx.shaderSource(f, 'precision mediump float; ' + @code)
+		ctx.shaderSource(f, '#extension GL_OES_standard_derivatives : enable\nprecision mediump float; ' + @code)
 		ctx.compileShader(f)
 		if !ctx.getShaderParameter(f, ctx.COMPILE_STATUS)
 			console.log('Failed to compile fragment shader ' + @name + '.')
@@ -135,7 +143,20 @@ class Renderer
 			return
 		ctx.attachShader(p, f)
 		ctx.linkProgram(p)
+		if !ctx.getProgramParameter(p, ctx.LINK_STATUS)
+			console.log('Failed to link program ' + @name + '.')
+			$('#errors').text($('#errors').text() + '\n' + ctx.getProgramInfoLog(p))
+			@failed = true
+			return
 		@p = p
+
+		debug = ctx.getExtension("WEBGL_debug_shaders")
+		if debug != undefined
+			console.log debug.getTranslatedShaderSource(f)
+
+		ctx.bindBuffer ctx.ARRAY_BUFFER, ctx.createBuffer()
+		ctx.bufferData ctx.ARRAY_BUFFER, new Float32Array([0,0,2,0,0,2,2,0,2,2,0,2]), ctx.STATIC_DRAW
+		ctx.vertexAttribPointer 0, 2, ctx.FLOAT, 0, 0, 0
 
 	fresh_texture: ->
 		need = @texture == null
@@ -174,22 +195,33 @@ class Renderer
 			return
 		render_once = false
 
+		if last_frame != 0
+			ctime = new Date()
+			ftime = (ctime - last_frame) / 1000
+			last_frame = ctime
+			render_time += ftime
+			frames++
+
+			$('#curfps').text(1 / ftime)
+			$('#avgfps').text(1 / (render_time / frames))
+		else
+			last_frame = new Date()
+
 		if @rtt != null
 			ctx.bindFramebuffer(ctx.FRAMEBUFFER, @rtt)
 			@fresh_texture()
 
 		ctx.viewport(0, 0, @dimensions[0], @dimensions[1])
-		ctx.bindBuffer ctx.ARRAY_BUFFER, ctx.createBuffer()
-		ctx.bufferData ctx.ARRAY_BUFFER, new Float32Array([0,0,2,0,0,2,2,0,2,2,0,2]), ctx.STATIC_DRAW
-		ctx.vertexAttribPointer 0, 2, ctx.FLOAT, 0, 0, 0
 		ctx.enableVertexAttribArray(ctx.getAttribLocation @p, 'p')
 		ctx.useProgram(@p)
 		ctx.uniform3f(ctx.getUniformLocation(@p, 'iResolution'), @dimensions[0], @dimensions[1], 0)
 		ctx.uniform2f(ctx.getUniformLocation(@p, 'resolution'), @dimensions[0], @dimensions[1])
+		ctx.uniform2f(ctx.getUniformLocation(@p, 'R'), @dimensions[0], @dimensions[1])
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iMouse'), mousepos[0], mousepos[1], mousestate[0], mousestate[1])
 		$('#time').text(time)
 		ctx.uniform1f(ctx.getUniformLocation(@p, 'iGlobalTime'), time)
 		ctx.uniform1f(ctx.getUniformLocation(@p, 'time'), time)
+		ctx.uniform1f(ctx.getUniformLocation(@p, 'T'), time)
 		date = new Date
 		ctx.uniform4f(ctx.getUniformLocation(@p, 'iDate'), date.getFullYear(), date.getMonth(), date.getDay(), date.getHours() * 60 * 60 + date.getMinutes() * 60 + date.getSeconds())
 
@@ -211,7 +243,6 @@ class Renderer
 			i++
 
 		ctx.drawArrays 4, 0, 6
-
 		ctx.finish()
 
 		ctx.bindFramebuffer(ctx.FRAMEBUFFER, null)
@@ -232,6 +263,10 @@ init = (shaders, globals, passes, dimensions, is_static_frame) ->
 	main = new Renderer('main', null, shaders['main'], viewdimensions)
 	if main.failed
 		return
+
+	frames = 0
+	render_time = 0
+	last_frame = 0
 
 	start = new Date
 	render_once = true

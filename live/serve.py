@@ -1,13 +1,15 @@
 import coffeescript, json, os, random, sys
 from cStringIO import StringIO
 from flask import Flask
-sys.path = [os.path.abspath(__file__)[:-14]] + sys.path
+fn = os.path.abspath(sys.argv[1])
+basepath = os.path.abspath(__file__)[:-14] + '/'
+sys.path = [basepath] + sys.path
 from compiler import Compiler
 app = Flask(__name__)
 app.debug = True
 import logging
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+#log.setLevel(logging.ERROR)
 
 last_imports = []
 
@@ -18,9 +20,9 @@ def compile():
 	sys.stdout = StringIO()
 	sys.stderr = StringIO()
 	success = True
-	utility = file('utility.sfr', 'r').read().decode('utf-8')
+	utility = file(basepath + 'utility.sfr', 'r').read().decode('utf-8')
 	try:
-		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, False, False)
+		compiler = Compiler(file(fn, 'r').read().decode('utf-8'), utility, 'glsl', False, False)
 	except:
 		import traceback
 		success = False
@@ -61,7 +63,7 @@ def getmtime_wrap(fn):
 
 @app.route('/refresh/<int:time>')
 def refresh(time=None):
-	mtime = int(max(map(getmtime_wrap, [fn, 'utility.sfr', 'compiler.py', 'live/serve.py'] + last_imports))) + rand_push
+	mtime = int(max(map(getmtime_wrap, [fn, basepath + 'utility.sfr', basepath + 'compiler.py', basepath + 'serve.py'] + last_imports))) + rand_push
 	if time == mtime:
 		return 'null'
 	return json.dumps([mtime] + list(compile()))
@@ -69,11 +71,10 @@ def refresh(time=None):
 @app.route('/<name>.coffee')
 def coffee(name=None):
 	try:
-		return coffeescript.compile_file('live/%s.coffee' % name, bare=True)
+		return coffeescript.compile_file(basepath + 'live/%s.coffee' % name, bare=True)
 	except Exception, e:
 		print e.message
 		return "$(document).ready(function() { $('#errors').text('Compilation error in \"' + %r + '\": ' + %r) })" % (str(name), str(e.message))
 
 if __name__=='__main__':
-	fn = sys.argv[1]
 	app.run(host='0.0.0.0')

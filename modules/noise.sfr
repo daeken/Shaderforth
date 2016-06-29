@@ -57,7 +57,7 @@
 		-
 	0 max 4 vec3 ** =m
 
-	p C .www * fract 2 * 1 - =x
+	p C .w * fract 2 * 1 - =x
 	x abs .5 - =h
 	x round =>ox
 	x ox - =a0
@@ -69,4 +69,46 @@
 			a0 .yz x12 .xz * h .yz x12 .yw * +
 		]
 	dot 130 *
+;
+
+: hash3 ( p:vec3 -> vec3 )
+	[
+		p [ 127.1 311.7 74.7 ] dot
+		p [ 269.5 183.3 246.1 ] dot
+		p [ 113.5 271.9 124.6 ] dot
+	] =>pt
+
+	pt sin 13.5453123 * fract 2 * 1 -
+;
+
+:m vop ( v ) i v + hash3 f v - dot ;
+
+: iqnoise-3d ( p:vec3 -> float )
+	p floor =i
+	p fract =f
+
+	3 2 f * - f * f * =u
+
+				[ 0 0 0 ] vop
+				[ 1 0 0 ] vop
+				u .x
+			mix
+				[ 0 1 0 ] vop
+				[ 1 1 0 ] vop
+				u .x
+			mix
+			u .y
+		mix
+				[ 0 0 1 ] vop
+				[ 1 0 1 ] vop
+				u .x
+			mix
+				[ 0 1 1 ] vop
+				[ 1 1 1 ] vop
+				u .x
+			mix
+			u .y
+		mix
+		u .z
+	mix
 ;

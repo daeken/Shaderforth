@@ -1,4 +1,4 @@
-import sys, time, datetime
+import os, sys, time, datetime
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GL.shaders import *
@@ -12,7 +12,7 @@ from compiler import Compiler
 vert = '''
 attribute vec3 p;
 void main() {
-	gl_Position = p.xyzz;
+	gl_Position = vec4(p.xyz, 1);
 }
 '''
 
@@ -23,18 +23,18 @@ tiler = '''
 :m gl_FragCoord $gl_FragCoord [ tileOff 0 0 ] + ;
 '''
 
-utility = file('utility.sfr', 'r').read().decode('utf-8')
-compiler = Compiler(tiler + file(sys.argv[1], 'r').read().decode('utf-8'), utility, False, False)
+utility = file(os.path.dirname(os.path.realpath(__file__)) + '/utility.sfr', 'r').read().decode('utf-8')
+compiler = Compiler(tiler + file(sys.argv[1], 'r').read().decode('utf-8'), utility)
 assert len(compiler.outcode) == 1
 frag = compiler.outcode['main']
 
 swidth = 960
 sheight = 540
-scale = 16
+scale = 8
 twidth = swidth * scale
 theight = sheight * scale
-final_scale = 2
-frametime = 22.248
+final_scale = 4
+frametime = 0
 frames = []
 for x in xrange(0, twidth, swidth):
 	for y in xrange(0, theight, sheight):
@@ -63,6 +63,8 @@ def render():
 	glViewport(0, 0, swidth, sheight)
 	glUniform3f(glGetUniformLocation(program, 'iResolution'), twidth, theight, 0)
 	glUniform1f(glGetUniformLocation(program, 'iGlobalTime'), frametime)
+	glUniform2f(glGetUniformLocation(program, 'R'), twidth, theight)
+	glUniform1f(glGetUniformLocation(program, 'T'), frametime)
 	print 'Frames left:', len(frames)
 	off = frames.pop(0)
 	glUniform2f(glGetUniformLocation(program, 'tileOff'), *off)
@@ -74,7 +76,7 @@ def render():
 	data = glReadPixels(0, 0, swidth, sheight, GL_RGB, GL_UNSIGNED_BYTE, outputType=None)
 	data = numpy.flipud(data.reshape((sheight, swidth, 3)).astype(numpy.uint8))
 	im.paste(Image.fromarray(data), (off[0], theight - off[1] - sheight))
-	glutSwapBuffers()
+	#glutSwapBuffers()
 	if len(frames):
 		glutPostRedisplay()
 	else:
